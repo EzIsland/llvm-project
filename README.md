@@ -1,3 +1,15 @@
+# EzIsland Fork of LLVM
+
+This is a fork of llvm-project which adds various extensions to the 
+clang frontend to support the compilation requirements of EzSuite 
+(https://github.com/EzIsland/EzSuite).
+
+Currently, no extensions have been implemented.
+
+What follows is the original README text of llvm-project 
+(https://github.com/llvm/llvm-project).
+
+
 # The LLVM Compiler Infrastructure
 
 This directory and its sub-directories contain source code for LLVM,
