@@ -3915,6 +3915,43 @@ public:
                                        Expr *ExecConfig = nullptr,
                                        bool IsExecConfig = false,
                                        bool AllowRecovery = false);
+
+private:
+  ///
+  /// This map stores the set of intercession classes that have been
+  /// constructed for this declaration unit and associates them
+  /// with their intercession target declaration name.
+  ///
+  llvm::DenseMap<DeclarationName, CXXRecordDecl*> IntercessionClassDecls;
+
+  /// @brief Retrieves the intercession target that is associated with the member expression
+  /// If the expression is not a member expression or does not have an intercession target
+  /// returns false. In general, only member expressions to OO_Dot operator overloads
+  /// can have an intercession target. However such member expressions might not have
+  /// have an intercession target, for instance, if the OO_Dot operator was explicitly invoked.
+  llvm::Optional<DeclarationName> GetIntercessionTarget(Expr* MemExpr);
+  
+  
+  /// @brief Constructs an intercession class for intercepting calls 
+  /// to IntercessionTarget and adds the class to the translation unit
+  /// under the global scope. If such a class already exists in the translation
+  /// unit, the existing class is returned.
+  CXXRecordDecl* GetIntercessionClassDecl(DeclarationName IntercessionTarget);
+
+  /// @brief Constructs an intercession class for intercepting calls to IntercessionTarget.
+  /// Does not add the class to any decl context.
+  CXXRecordDecl* BuildIntercessionClassDecl(DeclContext* DC, DeclarationName IntercessionTarget);
+  FunctionTemplateDecl* BuildIntercessionClassCallOperatorTemplate(CXXRecordDecl* IntercessionClassDecl, DeclarationName IntercessionTarget);
+  CXXMethodDecl* BuildIntercessionClassCallOperatorMethod(CXXRecordDecl* IntercessionClassDecl, QualType ObjParmType, QualType ArgsParmType, DeclarationName IntercessionTarget);
+  Expr* BuildIntercessionClassCallOperatorBodyExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget);
+  CompoundStmt* BuildIntercessionClassCallOperatorBody(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget);
+  Expr* BuildIntercessionClassCallOperatorNoexceptExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget);
+  Expr* BuildIntercessionClassCallOperatorRequiresExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget);
+  Expr* BuildIntercessionClassConstructExpr(DeclarationName intercessionTarget);
+  SourceLocation GetIntercessionClassDummySourceLocation();
+
+public:
+  
   ExprResult
   BuildCallToObjectOfClassType(Scope *S, Expr *Object, SourceLocation LParenLoc,
                                MultiExprArg Args,
@@ -5400,7 +5437,8 @@ public:
                            const TemplateArgumentListInfo *TemplateArgs,
                            const Scope *S,
                            bool SuppressQualifierCheck = false,
-                           ActOnMemberAccessExtraArgs *ExtraArgs = nullptr);
+                           ActOnMemberAccessExtraArgs *ExtraArgs = nullptr,
+			   const DeclarationName* IntercessionTarget = nullptr);
 
   ExprResult BuildFieldReferenceExpr(Expr *BaseExpr, bool IsArrow,
                                      SourceLocation OpLoc,
@@ -5437,7 +5475,8 @@ public:
                   bool HadMultipleCandidates,
                   const DeclarationNameInfo &MemberNameInfo, QualType Ty,
                   ExprValueKind VK, ExprObjectKind OK,
-                  const TemplateArgumentListInfo *TemplateArgs = nullptr);
+                  const TemplateArgumentListInfo *TemplateArgs = nullptr,
+		  const DeclarationName* IntercessionTarget = nullptr);
   MemberExpr *
   BuildMemberExpr(Expr *Base, bool IsArrow, SourceLocation OpLoc,
                   NestedNameSpecifierLoc NNS, SourceLocation TemplateKWLoc,
@@ -5445,7 +5484,8 @@ public:
                   bool HadMultipleCandidates,
                   const DeclarationNameInfo &MemberNameInfo, QualType Ty,
                   ExprValueKind VK, ExprObjectKind OK,
-                  const TemplateArgumentListInfo *TemplateArgs = nullptr);
+                  const TemplateArgumentListInfo *TemplateArgs = nullptr,
+		  const DeclarationName* IntercessionTarget = nullptr);
 
   void ActOnDefaultCtorInitializers(Decl *CDtorDecl);
   bool ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,

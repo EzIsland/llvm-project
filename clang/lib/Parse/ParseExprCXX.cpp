@@ -2554,53 +2554,14 @@ bool Parser::ParseUnqualifiedIdOperator(CXXScopeSpec &SS, bool EnteringContext,
   SourceLocation SymbolLocations[3];
   OverloadedOperatorKind Op = OO_None;
   switch (Tok.getKind()) {
-    case tok::kw_new:
-    case tok::kw_delete: {
-      bool isNew = Tok.getKind() == tok::kw_new;
-      // Consume the 'new' or 'delete'.
-      SymbolLocations[SymbolIdx++] = ConsumeToken();
-      // Check for array new/delete.
-      if (Tok.is(tok::l_square) &&
-          (!getLangOpts().CPlusPlus11 || NextToken().isNot(tok::l_square))) {
-        // Consume the '[' and ']'.
-        BalancedDelimiterTracker T(*this, tok::l_square);
-        T.consumeOpen();
-        T.consumeClose();
-        if (T.getCloseLocation().isInvalid())
-          return true;
-
-        SymbolLocations[SymbolIdx++] = T.getOpenLocation();
-        SymbolLocations[SymbolIdx++] = T.getCloseLocation();
-        Op = isNew? OO_Array_New : OO_Array_Delete;
-      } else {
-        Op = isNew? OO_New : OO_Delete;
-      }
-      break;
-    }
-
-#define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
-    case tok::Token:                                                     \
-      SymbolLocations[SymbolIdx++] = ConsumeToken();                     \
-      Op = OO_##Name;                                                    \
-      break;
-#define OVERLOADED_OPERATOR_MULTI(Name,Spelling,Unary,Binary,MemberOnly)
-#include "clang/Basic/OperatorKinds.def"
-
-    case tok::l_paren: {
-      // Consume the '(' and ')'.
-      BalancedDelimiterTracker T(*this, tok::l_paren);
-      T.consumeOpen();
-      T.consumeClose();
-      if (T.getCloseLocation().isInvalid())
-        return true;
-
-      SymbolLocations[SymbolIdx++] = T.getOpenLocation();
-      SymbolLocations[SymbolIdx++] = T.getCloseLocation();
-      Op = OO_Call;
-      break;
-    }
-
-    case tok::l_square: {
+  case tok::kw_new:
+  case tok::kw_delete: {
+    bool isNew = Tok.getKind() == tok::kw_new;
+    // Consume the 'new' or 'delete'.
+    SymbolLocations[SymbolIdx++] = ConsumeToken();
+    // Check for array new/delete.
+    if (Tok.is(tok::l_square) &&
+        (!getLangOpts().CPlusPlus11 || NextToken().isNot(tok::l_square))) {
       // Consume the '[' and ']'.
       BalancedDelimiterTracker T(*this, tok::l_square);
       T.consumeOpen();
@@ -2610,20 +2571,59 @@ bool Parser::ParseUnqualifiedIdOperator(CXXScopeSpec &SS, bool EnteringContext,
 
       SymbolLocations[SymbolIdx++] = T.getOpenLocation();
       SymbolLocations[SymbolIdx++] = T.getCloseLocation();
-      Op = OO_Subscript;
-      break;
+      Op = isNew ? OO_Array_New : OO_Array_Delete;
+    } else {
+      Op = isNew ? OO_New : OO_Delete;
     }
+    break;
+  }
 
-    case tok::code_completion: {
-      // Don't try to parse any further.
-      cutOffParsing();
-      // Code completion for the operator name.
-      Actions.CodeCompleteOperatorName(getCurScope());
+#define OVERLOADED_OPERATOR(Name, Spelling, Token, Unary, Binary, MemberOnly)  \
+  case tok::Token:                                                             \
+    SymbolLocations[SymbolIdx++] = ConsumeToken();                             \
+    Op = OO_##Name;                                                            \
+    break;
+#define OVERLOADED_OPERATOR_MULTI(Name, Spelling, Unary, Binary, MemberOnly)
+#include "clang/Basic/OperatorKinds.def"
+
+  case tok::l_paren: {
+    // Consume the '(' and ')'.
+    BalancedDelimiterTracker T(*this, tok::l_paren);
+    T.consumeOpen();
+    T.consumeClose();
+    if (T.getCloseLocation().isInvalid())
       return true;
-    }
 
-    default:
-      break;
+    SymbolLocations[SymbolIdx++] = T.getOpenLocation();
+    SymbolLocations[SymbolIdx++] = T.getCloseLocation();
+    Op = OO_Call;
+    break;
+  }
+
+  case tok::l_square: {
+    // Consume the '[' and ']'.
+    BalancedDelimiterTracker T(*this, tok::l_square);
+    T.consumeOpen();
+    T.consumeClose();
+    if (T.getCloseLocation().isInvalid())
+      return true;
+
+    SymbolLocations[SymbolIdx++] = T.getOpenLocation();
+    SymbolLocations[SymbolIdx++] = T.getCloseLocation();
+    Op = OO_Subscript;
+    break;
+  }
+
+  case tok::code_completion: {
+    // Don't try to parse any further.
+    cutOffParsing();
+    // Code completion for the operator name.
+    Actions.CodeCompleteOperatorName(getCurScope());
+    return true;
+  }
+
+  default:
+    break;
   }
 
   if (Op != OO_None) {
@@ -2671,10 +2671,9 @@ bool Parser::ParseUnqualifiedIdOperator(CXXScopeSpec &SS, bool EnteringContext,
     SourceLocation SuffixLoc;
     if (IsUDSuffix) {
       II = &PP.getIdentifierTable().get(Literal.getUDSuffix());
-      SuffixLoc =
-        Lexer::AdvanceToTokenCharacter(TokLocs[Literal.getUDSuffixToken()],
-                                       Literal.getUDSuffixOffset(),
-                                       PP.getSourceManager(), getLangOpts());
+      SuffixLoc = Lexer::AdvanceToTokenCharacter(
+          TokLocs[Literal.getUDSuffixToken()], Literal.getUDSuffixOffset(),
+          PP.getSourceManager(), getLangOpts());
     } else if (Tok.is(tok::identifier)) {
       II = Tok.getIdentifierInfo();
       SuffixLoc = ConsumeToken();

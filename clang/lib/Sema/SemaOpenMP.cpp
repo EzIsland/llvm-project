@@ -17030,6 +17030,7 @@ static bool actOnOMPReductionKindClause(
   case OO_Comma:
   case OO_ArrowStar:
   case OO_Arrow:
+  case OO_Dot:
   case OO_Call:
   case OO_Subscript:
   case OO_Conditional:

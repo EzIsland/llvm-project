@@ -11409,17 +11409,8 @@ TreeTransform<Derived>::TransformGNUNullExpr(GNUNullExpr *E) {
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
-  switch (E->getOperator()) {
-  case OO_New:
-  case OO_Delete:
-  case OO_Array_New:
-  case OO_Array_Delete:
-    llvm_unreachable("new and delete operators cannot use CXXOperatorCallExpr");
-
-  case OO_Call: {
-    // This is a call to an object's operator().
-    assert(E->getNumArgs() >= 1 && "Object call is missing arguments");
-
+  auto transformAndRebuildMultiArgumentCallExpr = [&](){
+     assert(E->getNumArgs() >= 1 && "Object call is missing arguments");
     // Transform the object itself.
     ExprResult Object = getDerived().TransformExpr(E->getArg(0));
     if (Object.isInvalid())
@@ -11437,6 +11428,17 @@ TreeTransform<Derived>::TransformCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
 
     return getDerived().RebuildCallExpr(Object.get(), FakeLParenLoc, Args,
                                         E->getEndLoc());
+  };
+  switch (E->getOperator()) {
+  case OO_New:
+  case OO_Delete:
+  case OO_Array_New:
+  case OO_Array_Delete:
+    llvm_unreachable("new and delete operators cannot use CXXOperatorCallExpr");
+
+  case OO_Call: {
+    // This is a call to an object's operator().
+    return transformAndRebuildMultiArgumentCallExpr();
   }
 
 #define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
@@ -11453,6 +11455,10 @@ TreeTransform<Derived>::TransformCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
   case OO_None:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("not an overloaded operator?");
+  }
+
+  if(E->getOperator() == OO_Dot) {
+    return transformAndRebuildMultiArgumentCallExpr();
   }
 
   ExprResult Callee = getDerived().TransformExpr(E->getCallee());

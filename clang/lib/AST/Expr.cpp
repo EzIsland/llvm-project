@@ -1640,6 +1640,7 @@ MemberExpr::MemberExpr(Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
   MemberExprBits.HadMultipleCandidates = false;
   MemberExprBits.NonOdrUseReason = NOUR;
   MemberExprBits.OperatorLoc = OperatorLoc;
+  MemberExprBits.HasIntercessionTarget = false;
   setDependence(computeDependence(this));
 }
 
@@ -1648,14 +1649,16 @@ MemberExpr *MemberExpr::Create(
     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
     ValueDecl *MemberDecl, DeclAccessPair FoundDecl,
     DeclarationNameInfo NameInfo, const TemplateArgumentListInfo *TemplateArgs,
-    QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR) {
+    QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR, const DeclarationName* IntercessionTarget) {
   bool HasQualOrFound = QualifierLoc || FoundDecl.getDecl() != MemberDecl ||
                         FoundDecl.getAccess() != MemberDecl->getAccess();
   bool HasTemplateKWAndArgsInfo = TemplateArgs || TemplateKWLoc.isValid();
   std::size_t Size =
       totalSizeToAlloc<MemberExprNameQualifier, ASTTemplateKWAndArgsInfo,
+		       IntercessionTargetDeclarationName,
                        TemplateArgumentLoc>(
           HasQualOrFound ? 1 : 0, HasTemplateKWAndArgsInfo ? 1 : 0,
+	  IntercessionTarget ? 1 : 0,
           TemplateArgs ? TemplateArgs->size() : 0);
 
   void *Mem = C.Allocate(Size, alignof(MemberExpr));
@@ -1696,6 +1699,11 @@ MemberExpr *MemberExpr::Create(
   }
   E->setDependence(Deps);
 
+  if(IntercessionTarget) {
+    E->MemberExprBits.HasIntercessionTarget = true;
+    E->getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget = *IntercessionTarget;
+  }
+
   return E;
 }
 
@@ -1707,10 +1715,13 @@ MemberExpr *MemberExpr::CreateEmpty(const ASTContext &Context,
          "template args but no template arg info?");
   bool HasQualOrFound = HasQualifier || HasFoundDecl;
   std::size_t Size =
-      totalSizeToAlloc<MemberExprNameQualifier, ASTTemplateKWAndArgsInfo,
+      totalSizeToAlloc<MemberExprNameQualifier,
+		       ASTTemplateKWAndArgsInfo,
+		       IntercessionTargetDeclarationName,
                        TemplateArgumentLoc>(HasQualOrFound ? 1 : 0,
                                             HasTemplateKWAndArgsInfo ? 1 : 0,
-                                            NumTemplateArgs);
+					    0,
+					    NumTemplateArgs);
   void *Mem = Context.Allocate(Size, alignof(MemberExpr));
   return new (Mem) MemberExpr(EmptyShell());
 }

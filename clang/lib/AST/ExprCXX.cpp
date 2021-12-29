@@ -418,10 +418,12 @@ OverloadExpr::OverloadExpr(StmtClass SC, const ASTContext &Context,
                            UnresolvedSetIterator Begin,
                            UnresolvedSetIterator End, bool KnownDependent,
                            bool KnownInstantiationDependent,
-                           bool KnownContainsUnexpandedParameterPack)
+                           bool KnownContainsUnexpandedParameterPack,
+			   const DeclarationName* IntercessionTarget)
     : Expr(SC, Context.OverloadTy, VK_LValue, OK_Ordinary), NameInfo(NameInfo),
       QualifierLoc(QualifierLoc) {
   unsigned NumResults = End - Begin;
+  OverloadExprBits.HasIntercessionTarget = IntercessionTarget != nullptr;
   OverloadExprBits.NumResults = NumResults;
   OverloadExprBits.HasTemplateKWAndArgsInfo =
       (TemplateArgs != nullptr ) || TemplateKWLoc.isValid();
@@ -1459,7 +1461,7 @@ UnresolvedMemberExpr::UnresolvedMemberExpr(
     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
     const DeclarationNameInfo &MemberNameInfo,
     const TemplateArgumentListInfo *TemplateArgs, UnresolvedSetIterator Begin,
-    UnresolvedSetIterator End)
+    UnresolvedSetIterator End, const DeclarationName* IntercessionTarget)
     : OverloadExpr(
           UnresolvedMemberExprClass, Context, QualifierLoc, TemplateKWLoc,
           MemberNameInfo, TemplateArgs, Begin, End,
@@ -1469,10 +1471,14 @@ UnresolvedMemberExpr::UnresolvedMemberExpr(
            BaseType->isInstantiationDependentType()),
           // Contains unexpanded parameter pack
           ((Base && Base->containsUnexpandedParameterPack()) ||
-           BaseType->containsUnexpandedParameterPack())),
+           BaseType->containsUnexpandedParameterPack()),
+	   IntercessionTarget),
       Base(Base), BaseType(BaseType), OperatorLoc(OperatorLoc) {
   UnresolvedMemberExprBits.IsArrow = IsArrow;
   UnresolvedMemberExprBits.HasUnresolvedUsing = HasUnresolvedUsing;
+  if(hasIntercessionTarget()) {
+    getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget = *IntercessionTarget;
+  }
 
   // Check whether all of the members are non-static member functions,
   // and if so, mark give this bound-member type instead of overload type.
@@ -1499,17 +1505,18 @@ UnresolvedMemberExpr *UnresolvedMemberExpr::Create(
     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
     const DeclarationNameInfo &MemberNameInfo,
     const TemplateArgumentListInfo *TemplateArgs, UnresolvedSetIterator Begin,
-    UnresolvedSetIterator End) {
+    UnresolvedSetIterator End, const DeclarationName* IntercessionTarget) {
   unsigned NumResults = End - Begin;
   bool HasTemplateKWAndArgsInfo = TemplateArgs || TemplateKWLoc.isValid();
   unsigned NumTemplateArgs = TemplateArgs ? TemplateArgs->size() : 0;
   unsigned Size = totalSizeToAlloc<DeclAccessPair, ASTTemplateKWAndArgsInfo,
+				   IntercessionTargetDeclarationName,
                                    TemplateArgumentLoc>(
-      NumResults, HasTemplateKWAndArgsInfo, NumTemplateArgs);
+		NumResults, HasTemplateKWAndArgsInfo, IntercessionTarget ? 1 : 0, NumTemplateArgs);
   void *Mem = Context.Allocate(Size, alignof(UnresolvedMemberExpr));
   return new (Mem) UnresolvedMemberExpr(
       Context, HasUnresolvedUsing, Base, BaseType, IsArrow, OperatorLoc,
-      QualifierLoc, TemplateKWLoc, MemberNameInfo, TemplateArgs, Begin, End);
+      QualifierLoc, TemplateKWLoc, MemberNameInfo, TemplateArgs, Begin, End, IntercessionTarget);
 }
 
 UnresolvedMemberExpr *UnresolvedMemberExpr::CreateEmpty(
@@ -1517,8 +1524,9 @@ UnresolvedMemberExpr *UnresolvedMemberExpr::CreateEmpty(
     bool HasTemplateKWAndArgsInfo, unsigned NumTemplateArgs) {
   assert(NumTemplateArgs == 0 || HasTemplateKWAndArgsInfo);
   unsigned Size = totalSizeToAlloc<DeclAccessPair, ASTTemplateKWAndArgsInfo,
+				   IntercessionTargetDeclarationName,
                                    TemplateArgumentLoc>(
-      NumResults, HasTemplateKWAndArgsInfo, NumTemplateArgs);
+				NumResults, HasTemplateKWAndArgsInfo, 0, NumTemplateArgs);
   void *Mem = Context.Allocate(Size, alignof(UnresolvedMemberExpr));
   return new (Mem)
       UnresolvedMemberExpr(EmptyShell(), NumResults, HasTemplateKWAndArgsInfo);

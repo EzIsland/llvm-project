@@ -2895,7 +2895,8 @@ protected:
                const TemplateArgumentListInfo *TemplateArgs,
                UnresolvedSetIterator Begin, UnresolvedSetIterator End,
                bool KnownDependent, bool KnownInstantiationDependent,
-               bool KnownContainsUnexpandedParameterPack);
+               bool KnownContainsUnexpandedParameterPack,
+	       const DeclarationName* IntercessionTarget = nullptr);
 
   OverloadExpr(StmtClass SC, EmptyShell Empty, unsigned NumResults,
                bool HasTemplateKWAndArgsInfo);
@@ -2923,6 +2924,10 @@ protected:
 
   bool hasTemplateKWAndArgsInfo() const {
     return OverloadExprBits.HasTemplateKWAndArgsInfo;
+  }
+
+  bool hasIntercessionTarget() const {
+    return OverloadExprBits.HasIntercessionTarget;
   }
 
 public:
@@ -3811,6 +3816,7 @@ class UnresolvedMemberExpr final
     : public OverloadExpr,
       private llvm::TrailingObjects<UnresolvedMemberExpr, DeclAccessPair,
                                     ASTTemplateKWAndArgsInfo,
+				    IntercessionTargetDeclarationName,
                                     TemplateArgumentLoc> {
   friend class ASTStmtReader;
   friend class OverloadExpr;
@@ -3849,7 +3855,8 @@ class UnresolvedMemberExpr final
                        SourceLocation TemplateKWLoc,
                        const DeclarationNameInfo &MemberNameInfo,
                        const TemplateArgumentListInfo *TemplateArgs,
-                       UnresolvedSetIterator Begin, UnresolvedSetIterator End);
+                       UnresolvedSetIterator Begin, UnresolvedSetIterator End,
+		       const DeclarationName* IntercessionTarget);
 
   UnresolvedMemberExpr(EmptyShell Empty, unsigned NumResults,
                        bool HasTemplateKWAndArgsInfo);
@@ -3862,6 +3869,10 @@ class UnresolvedMemberExpr final
     return hasTemplateKWAndArgsInfo();
   }
 
+  unsigned numTrailingObjects(OverloadToken<IntercessionTargetDeclarationName>) const {
+    return hasIntercessionTarget();
+  }
+
 public:
   static UnresolvedMemberExpr *
   Create(const ASTContext &Context, bool HasUnresolvedUsing, Expr *Base,
@@ -3869,12 +3880,20 @@ public:
          NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
          const DeclarationNameInfo &MemberNameInfo,
          const TemplateArgumentListInfo *TemplateArgs,
-         UnresolvedSetIterator Begin, UnresolvedSetIterator End);
+         UnresolvedSetIterator Begin, UnresolvedSetIterator End,
+	 const DeclarationName* IntercessionTarget = nullptr);
 
   static UnresolvedMemberExpr *CreateEmpty(const ASTContext &Context,
                                            unsigned NumResults,
                                            bool HasTemplateKWAndArgsInfo,
                                            unsigned NumTemplateArgs);
+
+  const DeclarationName* getIntercessionTarget() const {
+    if(OverloadExprBits.HasIntercessionTarget) {
+      return &(getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget);
+    }
+    return nullptr;
+  }
 
   /// True if this is an implicit access, i.e., one in which the
   /// member being accessed was not written in the source.

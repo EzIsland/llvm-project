@@ -19740,7 +19740,9 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
     const Expr *BME = E->IgnoreParens();
     PartialDiagnostic PD = PDiag(diag::err_bound_member_function);
     // Try to give a nicer diagnostic if it is a bound member that we recognize.
-    if (isa<CXXPseudoDestructorExpr>(BME)) {
+    if(GetIntercessionTarget(E)) {
+      PD = PDiag(diag::err_intercession_of_member_field);
+    } else if (isa<CXXPseudoDestructorExpr>(BME)) {
       PD = PDiag(diag::err_dtor_expr_without_call) << /*pseudo-destructor*/ 1;
     } else if (const auto *ME = dyn_cast<MemberExpr>(BME)) {
       if (ME->getMemberNameInfo().getName().getNameKind() ==

@@ -3157,12 +3157,19 @@ struct MemberExprNameQualifier {
   DeclAccessPair FoundDecl;
 };
 
+/// For MemberExpr and UnresolvedMemberExpr referring to an intercession function (OO_Dot)
+// stores the DeclarationName for the target of the intercession.
+struct IntercessionTargetDeclarationName {
+  DeclarationName IntercessionTarget;
+};
+
 /// MemberExpr - [C99 6.5.2.3] Structure and Union Members.  X->F and X.F.
 ///
 class MemberExpr final
     : public Expr,
       private llvm::TrailingObjects<MemberExpr, MemberExprNameQualifier,
                                     ASTTemplateKWAndArgsInfo,
+				    IntercessionTargetDeclarationName,
                                     TemplateArgumentLoc> {
   friend class ASTReader;
   friend class ASTStmtReader;
@@ -3184,12 +3191,20 @@ class MemberExpr final
   /// MemberLoc - This is the location of the member name.
   SourceLocation MemberLoc;
 
+  size_t hasIntercessionTarget() const {
+    return MemberExprBits.HasIntercessionTarget;
+  }
+
   size_t numTrailingObjects(OverloadToken<MemberExprNameQualifier>) const {
     return hasQualifierOrFoundDecl();
   }
 
   size_t numTrailingObjects(OverloadToken<ASTTemplateKWAndArgsInfo>) const {
     return hasTemplateKWAndArgsInfo();
+  }
+
+  size_t numTrailingObjects(OverloadToken<IntercessionTargetDeclarationName>) const {
+    return hasIntercessionTarget();
   }
 
   bool hasQualifierOrFoundDecl() const {
@@ -3216,7 +3231,8 @@ public:
                             DeclarationNameInfo MemberNameInfo,
                             const TemplateArgumentListInfo *TemplateArgs,
                             QualType T, ExprValueKind VK, ExprObjectKind OK,
-                            NonOdrUseReason NOUR);
+                            NonOdrUseReason NOUR,
+			    const DeclarationName* IntercessionTarget = nullptr);
 
   /// Create an implicit MemberExpr, with no location, qualifier, template
   /// arguments, and so on. Suitable only for non-static member access.
@@ -3227,7 +3243,7 @@ public:
     return Create(C, Base, IsArrow, SourceLocation(), NestedNameSpecifierLoc(),
                   SourceLocation(), MemberDecl,
                   DeclAccessPair::make(MemberDecl, MemberDecl->getAccess()),
-                  DeclarationNameInfo(), nullptr, T, VK, OK, NOUR_None);
+                  DeclarationNameInfo(), nullptr, T, VK, OK, NOUR_None, nullptr);
   }
 
   static MemberExpr *CreateEmpty(const ASTContext &Context, bool HasQualifier,
@@ -3251,6 +3267,13 @@ public:
       return DeclAccessPair::make(getMemberDecl(),
                                   getMemberDecl()->getAccess());
     return getTrailingObjects<MemberExprNameQualifier>()->FoundDecl;
+  }
+
+  const DeclarationName* getIntercessionTarget() const {
+    if(MemberExprBits.HasIntercessionTarget) {
+      return &(getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget);
+    }
+    return nullptr;
   }
 
   /// Determines whether this member expression actually had

@@ -34,6 +34,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/IR/DerivedTypes.h"
 #include <algorithm>
 #include <cstdlib>
 
@@ -9191,15 +9192,12 @@ void Sema::AddBuiltinOperatorCandidates(OverloadedOperatorKind Op,
   SmallVector<BuiltinCandidateTypeSet, 2> CandidateTypes;
   for (unsigned ArgIdx = 0, N = Args.size(); ArgIdx != N; ++ArgIdx) {
     CandidateTypes.emplace_back(*this);
-    CandidateTypes[ArgIdx].AddTypesConvertedFrom(Args[ArgIdx]->getType(),
-                                                 OpLoc,
-                                                 true,
-                                                 (Op == OO_Exclaim ||
-                                                  Op == OO_AmpAmp ||
-                                                  Op == OO_PipePipe),
-                                                 VisibleTypeConversionsQuals);
-    HasNonRecordCandidateType = HasNonRecordCandidateType ||
-        CandidateTypes[ArgIdx].hasNonRecordTypes();
+    CandidateTypes[ArgIdx].AddTypesConvertedFrom(
+        Args[ArgIdx]->getType(), OpLoc, true,
+        (Op == OO_Exclaim || Op == OO_AmpAmp || Op == OO_PipePipe),
+        VisibleTypeConversionsQuals);
+    HasNonRecordCandidateType =
+        HasNonRecordCandidateType || CandidateTypes[ArgIdx].hasNonRecordTypes();
     HasArithmeticOrEnumeralCandidateType =
         HasArithmeticOrEnumeralCandidateType ||
         CandidateTypes[ArgIdx].hasArithmeticOrEnumeralTypes();
@@ -9215,10 +9213,9 @@ void Sema::AddBuiltinOperatorCandidates(OverloadedOperatorKind Op,
     return;
 
   // Setup an object to manage the common state for building overloads.
-  BuiltinOperatorOverloadBuilder OpBuilder(*this, Args,
-                                           VisibleTypeConversionsQuals,
-                                           HasArithmeticOrEnumeralCandidateType,
-                                           CandidateTypes, CandidateSet);
+  BuiltinOperatorOverloadBuilder OpBuilder(
+      *this, Args, VisibleTypeConversionsQuals,
+      HasArithmeticOrEnumeralCandidateType, CandidateTypes, CandidateSet);
 
   // Dispatch over the operation to add in only those overloads which apply.
   switch (Op) {
@@ -9231,8 +9228,9 @@ void Sema::AddBuiltinOperatorCandidates(OverloadedOperatorKind Op,
   case OO_Array_New:
   case OO_Array_Delete:
   case OO_Call:
+  case OO_Dot:
     llvm_unreachable(
-                    "Special operators don't use AddBuiltinOperatorCandidates");
+        "Special operators don't use AddBuiltinOperatorCandidates");
 
   case OO_Comma:
   case OO_Arrow:
@@ -14222,6 +14220,179 @@ Sema::CreateOverloadedArraySubscriptExpr(SourceLocation LLoc,
   return CreateBuiltinArraySubscriptExpr(Args[0], LLoc, Args[1], RLoc);
 }
 
+CXXRecordDecl* Sema::GetIntercessionClassDecl(DeclarationName IntercessionTarget) {
+  auto iter = IntercessionClassDecls.find(IntercessionTarget);
+  if(iter != IntercessionClassDecls.end()) {
+    return iter->second;
+  }
+  CXXRecordDecl* newIntercessionClassDecl = BuildIntercessionClassDecl(Context.getTranslationUnitDecl(), IntercessionTarget);
+  Context.getTranslationUnitDecl()->addDecl(newIntercessionClassDecl);
+  IntercessionClassDecls.insert(std::make_pair(IntercessionTarget, newIntercessionClassDecl));
+  return newIntercessionClassDecl;
+}
+
+Expr* Sema::BuildIntercessionClassCallOperatorBodyExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto objParmDeclRefExpr = DeclRefExpr::Create(Context, NestedNameSpecifierLoc{}, dummySourceLoc, ObjParmDecl, /*refersToEnclosingVariableOrCapture*/false, dummySourceLoc, ObjTemplateParmType, VK_LValue);
+  auto argsParmDeclRefExpr = DeclRefExpr::Create(Context, NestedNameSpecifierLoc{}, dummySourceLoc, ArgsParmDecl, /*refersToEnclosingVariableOrCapture*/false, dummySourceLoc, ArgsTemplateParmType, VK_LValue);
+  auto argsParmStaticCastType = Context.getRValueReferenceType(ArgsTemplateParmType);
+  auto argsParmStaticCastTypeSourceInfo = Context.getTrivialTypeSourceInfo(argsParmStaticCastType, dummySourceLoc);
+  auto argsParmStaticCastExpr = CXXStaticCastExpr::Create(Context, ArgsTemplateParmType, VK_XValue, CK_Dependent, argsParmDeclRefExpr, /*CXXCastPath*/nullptr, argsParmStaticCastTypeSourceInfo, FPOptionsOverride{}, dummySourceLoc, dummySourceLoc, {dummySourceLoc, dummySourceLoc});
+  auto argsParmPackExpansionExpr = new (Context)PackExpansionExpr(Context.DependentTy, argsParmStaticCastExpr, dummySourceLoc, /*optional numExpansions*/{});
+  auto intercessionTargetDeclNameInfo = DeclarationNameInfo{IntercessionTarget, dummySourceLoc};
+  auto objParmStaticCastType = Context.getRValueReferenceType(ObjTemplateParmType);
+  auto objParmStaticCastTypeSourceInfo = Context.getTrivialTypeSourceInfo(objParmStaticCastType, dummySourceLoc);
+  auto objParmStaticCastExpr = CXXStaticCastExpr::Create(Context, ObjTemplateParmType, VK_XValue, CK_Dependent, objParmDeclRefExpr, /*CXXCastPath*/nullptr, objParmStaticCastTypeSourceInfo, FPOptionsOverride{}, dummySourceLoc, dummySourceLoc, {dummySourceLoc, dummySourceLoc});
+  auto intercessionTargetDependentScopeMemberExpr = CXXDependentScopeMemberExpr::Create(Context, objParmStaticCastExpr, Context.DependentTy/*dependent type*/, false, dummySourceLoc, NestedNameSpecifierLoc{}, /*templateKeywordLoc*/SourceLocation{}, nullptr, intercessionTargetDeclNameInfo, /*TemplateArgumentListInfo*/nullptr);
+  auto intercessionTargetCallExpr = CallExpr::Create(Context, intercessionTargetDependentScopeMemberExpr, {argsParmPackExpansionExpr}, Context.DependentTy/*dependent type*/, VK_PRValue, dummySourceLoc, FPOptionsOverride{});
+  return intercessionTargetCallExpr;
+}
+
+Expr* Sema::BuildIntercessionClassCallOperatorNoexceptExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto intercessionTargetCallExpr = BuildIntercessionClassCallOperatorBodyExpr(ObjTemplateParmType, ObjParmDecl, ArgsTemplateParmType, ArgsParmDecl, IntercessionTarget);
+  auto callOperatorNoexceptExpr = new (Context) CXXNoexceptExpr(Context.BoolTy, intercessionTargetCallExpr, CT_Dependent, dummySourceLoc, dummySourceLoc);
+  return callOperatorNoexceptExpr;
+}
+
+Expr* Sema::BuildIntercessionClassCallOperatorRequiresExpr(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto intercessionTargetCallExpr = BuildIntercessionClassCallOperatorBodyExpr(ObjTemplateParmType, ObjParmDecl, ArgsTemplateParmType, ArgsParmDecl, IntercessionTarget);
+  auto requirement = new (Context) concepts::ExprRequirement(intercessionTargetCallExpr, /*isSimple*/true, /*excpetionspecloc*/SourceLocation{}, concepts::ExprRequirement::ReturnTypeRequirement{}, concepts::ExprRequirement::SS_Dependent, /*conceptSpecializationExpr*/nullptr);
+  auto requiresExprBodyDecl = RequiresExprBodyDecl::Create(Context, Context.getTranslationUnitDecl(), dummySourceLoc);
+  auto callOperatorRequiresExpr = RequiresExpr::Create(Context, dummySourceLoc, requiresExprBodyDecl, /*localParameters*/{}, {requirement}, dummySourceLoc);
+  return callOperatorRequiresExpr;
+}
+
+CompoundStmt* Sema::BuildIntercessionClassCallOperatorBody(QualType ObjTemplateParmType, ParmVarDecl* ObjParmDecl, QualType ArgsTemplateParmType, ParmVarDecl* ArgsParmDecl, DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto intercessionTargetCallExpr = BuildIntercessionClassCallOperatorBodyExpr(ObjTemplateParmType, ObjParmDecl, ArgsTemplateParmType, ArgsParmDecl, IntercessionTarget);
+  auto returnStmt = ReturnStmt::Create(Context, dummySourceLoc, intercessionTargetCallExpr, /*nrvo candidate*/nullptr);
+  auto compoundStmt = CompoundStmt::Create(Context, returnStmt, dummySourceLoc, dummySourceLoc);
+  return compoundStmt;
+}
+
+CXXMethodDecl* Sema::BuildIntercessionClassCallOperatorMethod(CXXRecordDecl* IntercessionClassDecl, QualType ObjTemplateParmType, QualType ArgsTemplateParmType, DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto objParmType = Context.getRValueReferenceType(ObjTemplateParmType);
+  auto argsParmType = Context.getPackExpansionType(Context.getRValueReferenceType(ArgsTemplateParmType),{});
+  auto autoType = Context.getAutoType(QualType{}, AutoTypeKeyword::DecltypeAuto, /*isDependent*/ false, /*isPack*/ false);
+  
+  auto callOperatorDeclNameInfo = DeclarationNameInfo{Context.DeclarationNames.getCXXOperatorName(OO_Call), dummySourceLoc};
+  
+  auto callOperator = CXXMethodDecl::Create(Context, IntercessionClassDecl, dummySourceLoc, callOperatorDeclNameInfo, QualType(),/*typesourceinfo to be filled in later*/ nullptr, SC_None, /*usesFPIntrinsic*/false, /*isInline*/true, ConstexprSpecKind::Constexpr, dummySourceLoc);
+  callOperator->setAccess(AS_public);
+
+  const auto objParmIdentifier = &Context.Idents.get("pObj");
+  const auto argsParmIdentifier = &Context.Idents.get("pArgs");
+
+  const auto objParmTypeSourceInfo = Context.getTrivialTypeSourceInfo(objParmType, dummySourceLoc);
+  const auto argsParmTypeSourceInfo = Context.getTrivialTypeSourceInfo(argsParmType, dummySourceLoc);
+  
+  auto objParmDecl = ParmVarDecl::Create(Context, callOperator, dummySourceLoc, dummySourceLoc, objParmIdentifier, objParmType, objParmTypeSourceInfo, StorageClass::SC_None, /*defaultArgExpr*/nullptr);
+  auto argsParmDecl = ParmVarDecl::Create(Context, callOperator, dummySourceLoc, dummySourceLoc, argsParmIdentifier, argsParmType, argsParmTypeSourceInfo, StorageClass::SC_None, /*defaultArgExpr*/nullptr);
+  auto callOperatorRequiresExpr = BuildIntercessionClassCallOperatorRequiresExpr(ObjTemplateParmType, objParmDecl, ArgsTemplateParmType, argsParmDecl, IntercessionTarget);
+  callOperator->setTrailingRequiresClause(callOperatorRequiresExpr);
+
+  auto callOperatorNoexceptExpr = BuildIntercessionClassCallOperatorNoexceptExpr(ObjTemplateParmType, objParmDecl, ArgsTemplateParmType, argsParmDecl, IntercessionTarget);
+  FunctionProtoType::ExtProtoInfo funcProtoInfo;
+  funcProtoInfo.TypeQuals.addConst();
+  funcProtoInfo.ExtInfo = FunctionType::ExtInfo{};
+  funcProtoInfo.Variadic = false;
+  funcProtoInfo.HasTrailingReturn = false;
+  funcProtoInfo.RefQualifier = RQ_None;
+  funcProtoInfo.ExceptionSpec = FunctionProtoType::ExceptionSpecInfo(EST_DependentNoexcept);
+  funcProtoInfo.ExceptionSpec.NoexceptExpr = callOperatorNoexceptExpr;
+  auto funcType = Context.getFunctionType(autoType, {objParmType, argsParmType}, funcProtoInfo);
+  auto funcTypeSourceInfo = Context.getTrivialTypeSourceInfo(funcType, dummySourceLoc);
+  auto callOperatorProtoTypeLoc = funcTypeSourceInfo->getTypeLoc().IgnoreParens().getAs<FunctionProtoTypeLoc>();
+  callOperator->setType(funcType);
+  callOperator->setTypeSourceInfo(funcTypeSourceInfo);
+  
+  objParmDecl->setScopeInfo(/*ScopeDepth=*/0, /*paramIndex=*/0);
+  argsParmDecl->setScopeInfo(/*ScopeDepth=*/0, /*paramIndex=*/1);
+  callOperatorProtoTypeLoc.setParam(0, objParmDecl);
+  callOperatorProtoTypeLoc.setParam(1, argsParmDecl);
+  callOperator->setParams({objParmDecl, argsParmDecl});
+  
+  auto compoundStmt = BuildIntercessionClassCallOperatorBody(ObjTemplateParmType, objParmDecl, ArgsTemplateParmType, argsParmDecl, IntercessionTarget);
+  callOperator->setBody(compoundStmt);
+  
+  return callOperator;
+}
+
+FunctionTemplateDecl* Sema::BuildIntercessionClassCallOperatorTemplate(CXXRecordDecl* IntercessionClassDecl, DeclarationName IntercessionTarget) {
+  const auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  const auto objTemplateParmIdentifier = &Context.Idents.get("Obj");
+  const auto argsTemplateParmIdentifier = &Context.Idents.get("Args");
+  auto objTemplateParmDecl = TemplateTypeParmDecl::Create(Context,IntercessionClassDecl, dummySourceLoc, dummySourceLoc, /*depth*/0, /*index*/ 0, objTemplateParmIdentifier, /*typename=*/true, /*ParameterPack=*/false, /*hasTypeConstraint=*/false);
+  auto argsTemplateParmDecl = TemplateTypeParmDecl::Create(Context, IntercessionClassDecl, dummySourceLoc, dummySourceLoc, /*depth*/0, /*index*/1, argsTemplateParmIdentifier, /*typename=*/true, /*ParameterPack=*/true, /*hasTypeConstraint=*/false);
+  auto templateParamList = TemplateParameterList::Create(Context, dummySourceLoc, dummySourceLoc, {objTemplateParmDecl, argsTemplateParmDecl}, dummySourceLoc, /*Requires Clause*/nullptr);
+  auto callOperator = BuildIntercessionClassCallOperatorMethod(IntercessionClassDecl, Context.getTypeDeclType(objTemplateParmDecl), Context.getTypeDeclType(argsTemplateParmDecl), IntercessionTarget);
+  auto funcTemplateDecl = FunctionTemplateDecl::Create(Context, IntercessionClassDecl, dummySourceLoc, Context.DeclarationNames.getCXXOperatorName(OO_Call), templateParamList, /*NamedDecl?*/callOperator);
+  callOperator->setDescribedFunctionTemplate(funcTemplateDecl);
+  funcTemplateDecl->setAccess(AS_public);
+  return funcTemplateDecl;
+}
+
+CXXRecordDecl* Sema::BuildIntercessionClassDecl(DeclContext* DC, DeclarationName IntercessionTarget) {
+  const auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  const auto intercessionClassName = std::string("__intercession_call_wrapper__") + IntercessionTarget.getAsString();
+  const auto intercessionClassIdentifier = &Context.Idents.get(intercessionClassName.c_str());
+  const auto intercessionClassDecl = CXXRecordDecl::Create(Context, TagTypeKind::TTK_Struct, DC, dummySourceLoc, dummySourceLoc, intercessionClassIdentifier);
+  intercessionClassDecl->startDefinition();
+  auto callOperator = BuildIntercessionClassCallOperatorTemplate(intercessionClassDecl, IntercessionTarget);
+  intercessionClassDecl->addDecl(callOperator);
+  DeclareImplicitDefaultConstructor(intercessionClassDecl);
+  intercessionClassDecl->completeDefinition();
+  return intercessionClassDecl;
+}
+
+SourceLocation Sema::GetIntercessionClassDummySourceLocation() {
+  return Context.getSourceManager().getLocForStartOfFile(Context.getSourceManager().getMainFileID());
+}
+
+namespace {
+  template<typename T>
+  struct type_identity {
+    using type = T;
+  };
+
+  template<typename T>
+  using type_identity_t = typename type_identity<T>::type;
+
+  template<typename T>
+  llvm::Optional<DeclarationName> GetIntercessionTargetForType(type_identity_t<T>* MemExpr) {
+    if(auto target = MemExpr->getIntercessionTarget()) {
+      return *target;
+    } else {
+      return llvm::None;
+    }
+  }
+
+} // namespace
+
+llvm::Optional<DeclarationName> Sema::GetIntercessionTarget(Expr* MemExpr)  {
+    if(auto member = llvm::dyn_cast_or_null<MemberExpr>(MemExpr)) {
+      return GetIntercessionTargetForType<MemberExpr>(member);
+    } else if(auto member = llvm::dyn_cast_or_null<UnresolvedMemberExpr>(MemExpr)) {
+      return GetIntercessionTargetForType<UnresolvedMemberExpr>(member);
+    } else {
+      return llvm::None;
+    }
+  }
+
+Expr* Sema::BuildIntercessionClassConstructExpr(DeclarationName IntercessionTarget) {
+  auto dummySourceLoc = GetIntercessionClassDummySourceLocation();
+  auto intercessionClassDecl = GetIntercessionClassDecl(IntercessionTarget);
+  auto intercessionClassType = Context.getTypeDeclType(intercessionClassDecl);
+  auto intercessionClassTypeSourceInfo = Context.getTrivialTypeSourceInfo(intercessionClassType, dummySourceLoc);
+  auto intercessionClassDefaultCtorDecl = *(intercessionClassDecl->ctors().begin());
+  auto temporaryConstructExpr = CXXTemporaryObjectExpr::Create(Context, intercessionClassDefaultCtorDecl, intercessionClassType, intercessionClassTypeSourceInfo, {}, SourceRange{dummySourceLoc, dummySourceLoc}, /*multipleCandidates=*/false, /*listinitialization=*/false, /*stdlistinitialization=*/false, /*zeroinitialization=*/false);
+  auto intercessionClassConstructExpr = new (Context) MaterializeTemporaryExpr(intercessionClassType, temporaryConstructExpr, /*boundToLvalueReference*/false);
+  return intercessionClassConstructExpr;
+}
+
 /// BuildCallToMemberFunction - Build a call to a member
 /// function. MemExpr is the expression that refers to the member
 /// function (and includes the object parameter), Args/NumArgs are the
@@ -14237,6 +14408,13 @@ ExprResult Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
                                            bool AllowRecovery) {
   assert(MemExprE->getType() == Context.BoundMemberTy ||
          MemExprE->getType() == Context.OverloadTy);
+
+  auto args = Args.vec();
+  if(auto intercessionTarget = GetIntercessionTarget(MemExprE)) {
+    auto intercessionClassConstructExpr = BuildIntercessionClassConstructExpr(*intercessionTarget);
+    args.insert(args.begin(), intercessionClassConstructExpr);
+    Args = MultiExprArg{args};
+  }
 
   // Dig out the member expression. This holds both the object
   // argument and the member function we're referring to.
@@ -15022,7 +15200,10 @@ Sema::BuildForRangeBeginEndCall(SourceLocation Loc,
                                  /*TemplateKWLoc=*/SourceLocation(),
                                  /*FirstQualifierInScope=*/nullptr,
                                  MemberLookup,
-                                 /*TemplateArgs=*/nullptr, S);
+                                 /*TemplateArgs=*/nullptr, S,
+				 /*CheckQualifiesr*/false,
+				 /*ActOnMemberAccessExtraArgs*/nullptr,
+				 /*IntercessionTarget*/nullptr);
     if (MemberRef.isInvalid()) {
       *CallExpr = ExprError();
       return FRS_DiagnosticIssued;

@@ -2369,7 +2369,7 @@ bool Sema::tryExprAsCall(Expr &E, QualType &ZeroArgCallReturnTy,
   // Attempt to call the member with no arguments - this will correctly handle
   // member templates with defaults/deduction of template arguments, overloads
   // with default arguments, etc.
-  if (IsMemExpr && !E.isTypeDependent()) {
+  if (IsMemExpr && !E.isTypeDependent() && !GetIntercessionTarget(&E)) {
     Sema::TentativeAnalysisScope Trap(*this);
     ExprResult R = BuildCallToMemberFunction(nullptr, &E, SourceLocation(),
                                              None, SourceLocation());

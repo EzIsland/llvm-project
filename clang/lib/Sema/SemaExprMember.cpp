@@ -723,7 +723,7 @@ static bool LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
         R.resolveKind();
         return SemaRef.BuildMemberReferenceExpr(
             BaseExpr, BaseExpr->getType(), OpLoc, IsArrow, SS, SourceLocation(),
-            nullptr, R, nullptr, nullptr);
+            nullptr, R, nullptr, nullptr, false, nullptr, nullptr);
       },
       Sema::CTK_ErrorRecovery, DC);
 
@@ -746,6 +746,8 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                const TemplateArgumentListInfo *TemplateArgs,
                                const Scope *S,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
+  DeclarationName IntercessionTargetStorage;
+  const DeclarationName* IntercessionTarget = nullptr;
   if (BaseType->isDependentType() ||
       (SS.isSet() && isDependentScopeSpecifier(SS)))
     return ActOnDependentMemberExpr(Base, BaseType,
@@ -754,7 +756,6 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                     NameInfo, TemplateArgs);
 
   LookupResult R(*this, NameInfo, LookupMemberName);
-
   // Implicit member accesses.
   if (!Base) {
     TypoExpr *TE = nullptr;
@@ -774,6 +775,25 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
         LookupMemberExpr(*this, R, BaseResult, IsArrow, OpLoc, SS,
                          ExtraArgs ? ExtraArgs->ObjCImpDecl : nullptr,
                          TemplateArgs != nullptr, TemplateKWLoc);
+    if(getLangOpts().CallIntercession && !Result.isInvalid() && R.empty() && getLangOpts().CPlusPlus && !IsArrow) {
+      DeclarationName OperatorDotName = getASTContext().DeclarationNames.getCXXOperatorName(OverloadedOperatorKind::OO_Dot);
+      DeclarationNameInfo OperatorDotNameInfo(OperatorDotName, NameInfo.getLoc());
+      LookupResult OperatorDotLookupResult(*this, OperatorDotNameInfo, LookupMemberName);
+      ExprResult OperatorDotBaseResult = Base;
+      ExprResult OperatorDotResult =
+	LookupMemberExpr(*this, OperatorDotLookupResult, OperatorDotBaseResult, IsArrow, OpLoc, SS, ExtraArgs ? ExtraArgs->ObjCImpDecl : nullptr, TemplateArgs != nullptr, TemplateKWLoc);
+      if(!OperatorDotLookupResult.empty()) {
+	if(auto typoExpr = Result.getAs<TypoExpr>()) {
+	  clearDelayedTypo(typoExpr);
+	}
+	R.suppressDiagnostics();
+	IntercessionTargetStorage = NameInfo.getName();
+	IntercessionTarget = &IntercessionTargetStorage;
+	R = std::move(OperatorDotLookupResult);
+	Result = std::move(OperatorDotResult);
+	BaseResult = std::move(OperatorDotBaseResult);
+      }
+    }
 
     if (BaseResult.isInvalid())
       return ExprError();
@@ -792,7 +812,7 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
   return BuildMemberReferenceExpr(Base, BaseType,
                                   OpLoc, IsArrow, SS, TemplateKWLoc,
                                   FirstQualifierInScope, R, TemplateArgs, S,
-                                  false, ExtraArgs);
+                                  false, ExtraArgs, IntercessionTarget);
 }
 
 ExprResult
@@ -894,12 +914,13 @@ MemberExpr *Sema::BuildMemberExpr(
     SourceLocation TemplateKWLoc, ValueDecl *Member, DeclAccessPair FoundDecl,
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
-    const TemplateArgumentListInfo *TemplateArgs) {
+    const TemplateArgumentListInfo *TemplateArgs,
+    const DeclarationName* IntercessionTarget) {
   NestedNameSpecifierLoc NNS =
       SS ? SS->getWithLocInContext(Context) : NestedNameSpecifierLoc();
   return BuildMemberExpr(Base, IsArrow, OpLoc, NNS, TemplateKWLoc, Member,
                          FoundDecl, HadMultipleCandidates, MemberNameInfo, Ty,
-                         VK, OK, TemplateArgs);
+                         VK, OK, TemplateArgs, IntercessionTarget);
 }
 
 MemberExpr *Sema::BuildMemberExpr(
@@ -907,13 +928,14 @@ MemberExpr *Sema::BuildMemberExpr(
     SourceLocation TemplateKWLoc, ValueDecl *Member, DeclAccessPair FoundDecl,
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
-    const TemplateArgumentListInfo *TemplateArgs) {
+    const TemplateArgumentListInfo *TemplateArgs,
+    const DeclarationName* IntercessionTarget) {
   assert((!IsArrow || Base->isPRValue()) &&
          "-> base must be a pointer prvalue");
   MemberExpr *E =
       MemberExpr::Create(Context, Base, IsArrow, OpLoc, NNS, TemplateKWLoc,
                          Member, FoundDecl, MemberNameInfo, TemplateArgs, Ty,
-                         VK, OK, getNonOdrUseReasonInCurrentContext(Member));
+                         VK, OK, getNonOdrUseReasonInCurrentContext(Member), IntercessionTarget);
   E->setHadMultipleCandidates(HadMultipleCandidates);
   MarkMemberReferenced(E);
 
@@ -953,7 +975,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                const TemplateArgumentListInfo *TemplateArgs,
                                const Scope *S,
                                bool SuppressQualifierCheck,
-                               ActOnMemberAccessExtraArgs *ExtraArgs) {
+                               ActOnMemberAccessExtraArgs *ExtraArgs,
+			       const DeclarationName* IntercessionTarget) {
   QualType BaseType = BaseExprType;
   if (IsArrow) {
     assert(BaseType->isPointerType());
@@ -1052,7 +1075,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                      IsArrow, OpLoc,
                                      SS.getWithLocInContext(Context),
                                      TemplateKWLoc, MemberNameInfo,
-                                     TemplateArgs, R.begin(), R.end());
+                                     TemplateArgs, R.begin(), R.end(),
+				     IntercessionTarget);
 
     return MemExpr;
   }
@@ -1126,7 +1150,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
 
     return BuildMemberExpr(BaseExpr, IsArrow, OpLoc, &SS, TemplateKWLoc,
                            MemberFn, FoundDecl, /*HadMultipleCandidates=*/false,
-                           MemberNameInfo, type, valueKind, OK_Ordinary);
+                           MemberNameInfo, type, valueKind, OK_Ordinary, nullptr,
+			   IntercessionTarget);
   }
   assert(!isa<FunctionDecl>(MemberDecl) && "member function not C++ method?");
 
@@ -1603,6 +1628,9 @@ static ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
         VK = BaseExpr.get()->getValueKind();
     }
 
+    if (!Member)
+      return ExprError();
+    
     QualType ret = CheckExtVectorComponent(S, BaseType, VK, OpLoc,
                                            Member, MemberLoc);
     if (ret.isNull())
@@ -1876,5 +1904,8 @@ Sema::BuildImplicitMemberExpr(const CXXScopeSpec &SS,
                                   /*IsArrow*/ true,
                                   SS, TemplateKWLoc,
                                   /*FirstQualifierInScope*/ nullptr,
-                                  R, TemplateArgs, S);
+                                  R, TemplateArgs, S,
+				  /*CheckQualifiers*/false,
+				  /*ActOnMemberAccessExtraArgs*/nullptr,
+				  /*IntercessonTarget*/nullptr);
 }

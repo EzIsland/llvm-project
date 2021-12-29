@@ -15802,7 +15802,7 @@ bool Sema::CheckOverloadedOperatorDeclaration(FunctionDecl *FnDecl) {
   //
   // Only the function-call operator allows default arguments
   // (C++ [over.call]p1).
-  if (Op != OO_Call) {
+  if (Op != OO_Call && Op != OO_Dot) {
     for (auto Param : FnDecl->parameters()) {
       if (Param->hasDefaultArg())
         return Diag(Param->getLocation(),
@@ -15828,7 +15828,12 @@ bool Sema::CheckOverloadedOperatorDeclaration(FunctionDecl *FnDecl) {
   //   described in the rest of this subclause.
   unsigned NumParams = FnDecl->getNumParams()
                      + (isa<CXXMethodDecl>(FnDecl)? 1 : 0);
-  if (Op != OO_Call &&
+
+  if(Op == OO_Dot && !getLangOpts().CallIntercession) {
+    return Diag(FnDecl->getLocation(), diag::err_operator_dot_no_intercession);
+  }
+  
+  if (Op != OO_Call && Op != OO_Dot &&
       ((NumParams == 1 && !CanBeUnaryOperator) ||
        (NumParams == 2 && !CanBeBinaryOperator) ||
        (NumParams < 1) || (NumParams > 2))) {
@@ -15849,7 +15854,7 @@ bool Sema::CheckOverloadedOperatorDeclaration(FunctionDecl *FnDecl) {
   }
 
   // Overloaded operators other than operator() cannot be variadic.
-  if (Op != OO_Call &&
+  if (Op != OO_Call && Op != OO_Dot &&
       FnDecl->getType()->castAs<FunctionProtoType>()->isVariadic()) {
     return Diag(FnDecl->getLocation(), diag::err_operator_overload_variadic)
       << FnDecl->getDeclName();

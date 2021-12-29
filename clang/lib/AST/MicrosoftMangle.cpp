@@ -1351,6 +1351,8 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
   case OO_PipeEqual: Out << "?_5"; break;
   // <operator-name> ::= ?_6 # ^=
   case OO_CaretEqual: Out << "?_6"; break;
+  // <operator-name> ::= ?_7 # .
+  case OO_Dot: Out << "?_7"; break;
   //                     ?_7 # vftable
   //                     ?_8 # vbtable
   //                     ?_9 # vcall

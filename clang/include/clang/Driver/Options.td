@@ -2698,6 +2698,9 @@ def fproc_stat_report : Joined<["-"], "fproc-stat-report">, Group<f_Group>,
   HelpText<"Print subprocess statistics">;
 def fproc_stat_report_EQ : Joined<["-"], "fproc-stat-report=">, Group<f_Group>,
   HelpText<"Save subprocess statistics to the given file">;
+def fp0060 : Flag<["-"], "fp0060">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
+    HelpText<"Enable experimental implementation of C++ proposal p0060, call intercession via operator dot">,
+    MarshallingInfoFlag<LangOpts<"CallIntercession">>;
 def ftlsmodel_EQ : Joined<["-"], "ftls-model=">, Group<f_Group>, Flags<[CC1Option]>,
   Values<"global-dynamic,local-dynamic,initial-exec,local-exec">,
   NormalizedValuesScope<"CodeGenOptions">,

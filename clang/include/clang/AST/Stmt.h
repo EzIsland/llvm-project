@@ -504,6 +504,10 @@ protected:
     /// was resolved from an overloaded set having size greater than 1.
     unsigned HadMultipleCandidates : 1;
 
+    /// True if this member expression refers to an interecession
+    /// function (OO_Dot).
+    unsigned HasIntercessionTarget : 1;
+
     /// Value of type NonOdrUseReason indicating why this MemberExpr does
     /// not constitute an odr-use of the named declaration. Meaningful only
     /// when naming a static member.
@@ -860,6 +864,7 @@ protected:
   class OverloadExprBitfields {
     friend class ASTStmtReader;
     friend class OverloadExpr;
+    friend class UnresolvedMemberExpr;
 
     unsigned : NumExprBits;
 
@@ -867,15 +872,18 @@ protected:
     /// keyword and arguments.
     unsigned HasTemplateKWAndArgsInfo : 1;
 
+    /// True if this member expression refers to an intercession function (OO_Dot)
+    unsigned HasIntercessionTarget : 1;
+
     /// Padding used by the derived classes to store various bits. If you
     /// need to add some data here, shrink this padding and add your data
     /// above. NumOverloadExprBits also needs to be updated.
-    unsigned : 32 - NumExprBits - 1;
+    unsigned : 32 - NumExprBits - 2;
 
     /// The number of results.
     unsigned NumResults;
   };
-  enum { NumOverloadExprBits = NumExprBits + 1 };
+  enum { NumOverloadExprBits = NumExprBits + 2 };
 
   class UnresolvedLookupExprBitfields {
     friend class ASTStmtReader;

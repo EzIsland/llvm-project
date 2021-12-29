@@ -4639,7 +4639,10 @@ def err_bound_member_function : Error<
   "reference to non-static member function must be called"
   "%select{|; did you mean to call it with no arguments?}0">;
 def note_possible_target_of_call : Note<"possible target for call">;
-
+def err_intercession_of_member_field : Error<
+  "Intercession of member fields via 'operator.' is not supported;"
+  " did you mean to call it with no arguments?">;
+  
 def err_ovl_no_viable_object_call : Error<
   "no matching function for call to object of type %0">;
 def err_ovl_ambiguous_object_call : Error<
@@ -8948,6 +8951,9 @@ def err_operator_overload_default_arg : Error<
 def err_operator_overload_must_be : Error<
   "overloaded %0 must be a %select{unary|binary|unary or binary}2 operator "
   "(has %1 parameter%s1)">;
+def err_operator_dot_no_intercession : Error<
+  "overloaded operator dot not permitted when call intercession is disabled.  "
+  "Use -fp0060 to enable call intercession.">;
 
 def err_operator_overload_must_be_member : Error<
   "overloaded %0 must be a non-static member function">;
