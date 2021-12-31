@@ -3249,7 +3249,8 @@ public:
   static MemberExpr *CreateEmpty(const ASTContext &Context, bool HasQualifier,
                                  bool HasFoundDecl,
                                  bool HasTemplateKWAndArgsInfo,
-                                 unsigned NumTemplateArgs);
+                                 unsigned NumTemplateArgs,
+				 bool HasIntercessionTarget);
 
   void setBase(Expr *E) { Base = E; }
   Expr *getBase() const { return cast<Expr>(Base); }
@@ -3269,7 +3270,7 @@ public:
     return getTrailingObjects<MemberExprNameQualifier>()->FoundDecl;
   }
 
-  const DeclarationName* getIntercessionTarget() const {
+  DeclarationName* getIntercessionTarget() {
     if(MemberExprBits.HasIntercessionTarget) {
       return &(getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget);
     }

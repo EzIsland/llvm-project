@@ -1031,6 +1031,7 @@ void ASTStmtReader::VisitMemberExpr(MemberExpr *E) {
   bool HasFoundDecl = Record.readInt();
   bool HasTemplateInfo = Record.readInt();
   unsigned NumTemplateArgs = Record.readInt();
+  bool HasIntercessionTarget = Record.readInt();
 
   E->Base = Record.readSubExpr();
   E->MemberDecl = Record.readDeclAs<ValueDecl>();
@@ -1038,6 +1039,7 @@ void ASTStmtReader::VisitMemberExpr(MemberExpr *E) {
   E->MemberLoc = Record.readSourceLocation();
   E->MemberExprBits.IsArrow = Record.readInt();
   E->MemberExprBits.HasQualifierOrFoundDecl = HasQualifier || HasFoundDecl;
+  E->MemberExprBits.HasIntercessionTarget = HasIntercessionTarget;
   E->MemberExprBits.HasTemplateKWAndArgsInfo = HasTemplateInfo;
   E->MemberExprBits.HadMultipleCandidates = Record.readInt();
   E->MemberExprBits.NonOdrUseReason = Record.readInt();
@@ -1066,6 +1068,10 @@ void ASTStmtReader::VisitMemberExpr(MemberExpr *E) {
     ReadTemplateKWAndArgsInfo(
         *E->getTrailingObjects<ASTTemplateKWAndArgsInfo>(),
         E->getTrailingObjects<TemplateArgumentLoc>(), NumTemplateArgs);
+
+  if (HasIntercessionTarget) {
+    *(E->getIntercessionTarget()) = Record.readDeclarationNameInfo().getName();
+  }
 }
 
 void ASTStmtReader::VisitObjCIsaExpr(ObjCIsaExpr *E) {
@@ -2016,9 +2022,12 @@ void ASTStmtReader::VisitOverloadExpr(OverloadExpr *E) {
 
   unsigned NumResults = Record.readInt();
   bool HasTemplateKWAndArgsInfo = Record.readInt();
+  bool HasIntercessionTarget = Record.readInt();
   assert((E->getNumDecls() == NumResults) && "Wrong NumResults!");
   assert((E->hasTemplateKWAndArgsInfo() == HasTemplateKWAndArgsInfo) &&
          "Wrong HasTemplateKWAndArgsInfo!");
+  assert((E->hasIntercessionTarget() == HasIntercessionTarget) &&
+         "Wrong HasIntercessionTarget!");
 
   if (HasTemplateKWAndArgsInfo) {
     unsigned NumTemplateArgs = Record.readInt();
@@ -2027,6 +2036,10 @@ void ASTStmtReader::VisitOverloadExpr(OverloadExpr *E) {
                               NumTemplateArgs);
     assert((E->getNumTemplateArgs() == NumTemplateArgs) &&
            "Wrong NumTemplateArgs!");
+  }
+
+  if(HasIntercessionTarget) {
+    *(E->getIntercessionTarget()) = Record.readDeclarationNameInfo().getName();
   }
 
   UnresolvedSet<8> Decls;
@@ -2943,7 +2956,8 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = MemberExpr::CreateEmpty(Context, Record[ASTStmtReader::NumExprFields],
                                   Record[ASTStmtReader::NumExprFields + 1],
                                   Record[ASTStmtReader::NumExprFields + 2],
-                                  Record[ASTStmtReader::NumExprFields + 3]);
+                                  Record[ASTStmtReader::NumExprFields + 3],
+				  Record[ASTStmtReader::NumExprFields + 4]);
       break;
 
     case EXPR_BINARY_OPERATOR:
@@ -3776,8 +3790,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
           /*HasTemplateKWAndArgsInfo=*/Record[ASTStmtReader::NumExprFields + 1],
           /*NumTemplateArgs=*/
           Record[ASTStmtReader::NumExprFields + 1]
-              ? Record[ASTStmtReader::NumExprFields + 2]
-              : 0);
+              ? Record[ASTStmtReader::NumExprFields + 3]
+	  : 0,
+	  /*HasIntercessionTarget=*/Record[ASTStmtReader::NumExprFields+2]);
       break;
 
     case EXPR_CXX_UNRESOLVED_LOOKUP:
@@ -3787,8 +3802,8 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
           /*HasTemplateKWAndArgsInfo=*/Record[ASTStmtReader::NumExprFields + 1],
           /*NumTemplateArgs=*/
           Record[ASTStmtReader::NumExprFields + 1]
-              ? Record[ASTStmtReader::NumExprFields + 2]
-              : 0);
+              ? Record[ASTStmtReader::NumExprFields + 3]
+	  : 0);
       break;
 
     case EXPR_TYPE_TRAIT:

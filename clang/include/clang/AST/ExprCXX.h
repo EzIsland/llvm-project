@@ -2896,10 +2896,10 @@ protected:
                UnresolvedSetIterator Begin, UnresolvedSetIterator End,
                bool KnownDependent, bool KnownInstantiationDependent,
                bool KnownContainsUnexpandedParameterPack,
-	       const DeclarationName* IntercessionTarget = nullptr);
+	       const DeclarationName* IntercessionTarget);
 
   OverloadExpr(StmtClass SC, EmptyShell Empty, unsigned NumResults,
-               bool HasTemplateKWAndArgsInfo);
+               bool HasTemplateKWAndArgsInfo, bool HasIntercessionTarget);
 
   /// Return the results. Defined after UnresolvedMemberExpr.
   inline DeclAccessPair *getTrailingResults();
@@ -2914,6 +2914,9 @@ protected:
     return const_cast<OverloadExpr *>(this)
         ->getTrailingASTTemplateKWAndArgsInfo();
   }
+
+  /// Return the optional intercession target.
+  inline DeclarationName *getTrailingASTIntercessionTarget(); 
 
   /// Return the optional template arguments. Defined after
   /// UnresolvedMemberExpr.
@@ -3011,6 +3014,10 @@ public:
     if (!hasTemplateKWAndArgsInfo())
       return SourceLocation();
     return getTrailingASTTemplateKWAndArgsInfo()->TemplateKWLoc;
+  }
+
+  DeclarationName* getIntercessionTarget() {
+    return getTrailingASTIntercessionTarget();
   }
 
   /// Retrieve the location of the left angle bracket starting the
@@ -3859,7 +3866,7 @@ class UnresolvedMemberExpr final
 		       const DeclarationName* IntercessionTarget);
 
   UnresolvedMemberExpr(EmptyShell Empty, unsigned NumResults,
-                       bool HasTemplateKWAndArgsInfo);
+                       bool HasTemplateKWAndArgsInfo, bool HasIntercessionTarget);
 
   unsigned numTrailingObjects(OverloadToken<DeclAccessPair>) const {
     return getNumDecls();
@@ -3886,14 +3893,8 @@ public:
   static UnresolvedMemberExpr *CreateEmpty(const ASTContext &Context,
                                            unsigned NumResults,
                                            bool HasTemplateKWAndArgsInfo,
-                                           unsigned NumTemplateArgs);
-
-  const DeclarationName* getIntercessionTarget() const {
-    if(OverloadExprBits.HasIntercessionTarget) {
-      return &(getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget);
-    }
-    return nullptr;
-  }
+                                           unsigned NumTemplateArgs,
+					   bool HasIntercessionTarget);
 
   /// True if this is an implicit access, i.e., one in which the
   /// member being accessed was not written in the source.
@@ -3994,6 +3995,16 @@ ASTTemplateKWAndArgsInfo *OverloadExpr::getTrailingASTTemplateKWAndArgsInfo() {
     return ULE->getTrailingObjects<ASTTemplateKWAndArgsInfo>();
   return cast<UnresolvedMemberExpr>(this)
       ->getTrailingObjects<ASTTemplateKWAndArgsInfo>();
+}
+
+DeclarationName *OverloadExpr::getTrailingASTIntercessionTarget() { 
+  if (!hasIntercessionTarget())
+    return nullptr;
+
+  if (auto *ULE = dyn_cast<UnresolvedLookupExpr>(this))
+    return nullptr;
+  return &(cast<UnresolvedMemberExpr>(this)
+    ->getTrailingObjects<IntercessionTargetDeclarationName>()->IntercessionTarget);
 }
 
 TemplateArgumentLoc *OverloadExpr::getTrailingTemplateArgumentLoc() {

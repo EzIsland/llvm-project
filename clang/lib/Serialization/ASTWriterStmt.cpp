@@ -895,6 +895,7 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
        E->getFoundDecl().getAccess() != E->getMemberDecl()->getAccess());
   bool HasTemplateInfo = E->hasTemplateKWAndArgsInfo();
   unsigned NumTemplateArgs = E->getNumTemplateArgs();
+  bool HasIntercessionTarget = E->hasIntercessionTarget();
 
   // Write these first for easy access when deserializing, as they affect the
   // size of the MemberExpr.
@@ -902,6 +903,7 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   Record.push_back(HasFoundDecl);
   Record.push_back(HasTemplateInfo);
   Record.push_back(NumTemplateArgs);
+  Record.push_back(HasIntercessionTarget);
 
   Record.AddStmt(E->getBase());
   Record.AddDeclRef(E->getMemberDecl());
@@ -925,6 +927,10 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   if (HasTemplateInfo)
     AddTemplateKWAndArgsInfo(*E->getTrailingObjects<ASTTemplateKWAndArgsInfo>(),
                              E->getTrailingObjects<TemplateArgumentLoc>());
+
+  if(auto target = E->getIntercessionTarget()) {
+    Record.AddDeclarationNameInfo(DeclarationNameInfo{*target, SourceLocation{}});
+  }
 
   Code = serialization::EXPR_MEMBER;
 }
@@ -1926,11 +1932,16 @@ void ASTStmtWriter::VisitOverloadExpr(OverloadExpr *E) {
 
   Record.push_back(E->getNumDecls());
   Record.push_back(E->hasTemplateKWAndArgsInfo());
+  Record.push_back(E->hasIntercessionTarget());
   if (E->hasTemplateKWAndArgsInfo()) {
     const ASTTemplateKWAndArgsInfo &ArgInfo =
         *E->getTrailingASTTemplateKWAndArgsInfo();
     Record.push_back(ArgInfo.NumTemplateArgs);
     AddTemplateKWAndArgsInfo(ArgInfo, E->getTrailingTemplateArgumentLoc());
+  }
+
+  if(auto target = E->getIntercessionTarget()) {
+    Record.AddDeclarationNameInfo(DeclarationNameInfo{*target, SourceLocation{}});
   }
 
   for (OverloadExpr::decls_iterator OvI = E->decls_begin(),

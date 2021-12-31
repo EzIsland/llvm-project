@@ -354,7 +354,7 @@ UnresolvedLookupExpr::UnresolvedLookupExpr(
     UnresolvedSetIterator End)
     : OverloadExpr(UnresolvedLookupExprClass, Context, QualifierLoc,
                    TemplateKWLoc, NameInfo, TemplateArgs, Begin, End, false,
-                   false, false),
+                   false, false, /*IntercessionTarget*/nullptr),
       NamingClass(NamingClass) {
   UnresolvedLookupExprBits.RequiresADL = RequiresADL;
   UnresolvedLookupExprBits.Overloaded = Overloaded;
@@ -364,7 +364,7 @@ UnresolvedLookupExpr::UnresolvedLookupExpr(EmptyShell Empty,
                                            unsigned NumResults,
                                            bool HasTemplateKWAndArgsInfo)
     : OverloadExpr(UnresolvedLookupExprClass, Empty, NumResults,
-                   HasTemplateKWAndArgsInfo) {}
+                   HasTemplateKWAndArgsInfo, /*HasIntercessionTarget=*/false) {}
 
 UnresolvedLookupExpr *UnresolvedLookupExpr::Create(
     const ASTContext &Context, CXXRecordDecl *NamingClass,
@@ -451,10 +451,11 @@ OverloadExpr::OverloadExpr(StmtClass SC, const ASTContext &Context,
 }
 
 OverloadExpr::OverloadExpr(StmtClass SC, EmptyShell Empty, unsigned NumResults,
-                           bool HasTemplateKWAndArgsInfo)
+                           bool HasTemplateKWAndArgsInfo, bool HasIntercessionTarget)
     : Expr(SC, Empty) {
   OverloadExprBits.NumResults = NumResults;
   OverloadExprBits.HasTemplateKWAndArgsInfo = HasTemplateKWAndArgsInfo;
+  OverloadExprBits.HasIntercessionTarget = HasIntercessionTarget;
 }
 
 // DependentScopeDeclRefExpr
@@ -1488,9 +1489,10 @@ UnresolvedMemberExpr::UnresolvedMemberExpr(
 
 UnresolvedMemberExpr::UnresolvedMemberExpr(EmptyShell Empty,
                                            unsigned NumResults,
-                                           bool HasTemplateKWAndArgsInfo)
+                                           bool HasTemplateKWAndArgsInfo,
+					   bool HasIntercessionTarget)
     : OverloadExpr(UnresolvedMemberExprClass, Empty, NumResults,
-                   HasTemplateKWAndArgsInfo) {}
+                   HasTemplateKWAndArgsInfo, HasIntercessionTarget) {}
 
 bool UnresolvedMemberExpr::isImplicitAccess() const {
   if (!Base)
@@ -1521,15 +1523,16 @@ UnresolvedMemberExpr *UnresolvedMemberExpr::Create(
 
 UnresolvedMemberExpr *UnresolvedMemberExpr::CreateEmpty(
     const ASTContext &Context, unsigned NumResults,
-    bool HasTemplateKWAndArgsInfo, unsigned NumTemplateArgs) {
+    bool HasTemplateKWAndArgsInfo, unsigned NumTemplateArgs,
+    bool HasIntercessionTarget) {
   assert(NumTemplateArgs == 0 || HasTemplateKWAndArgsInfo);
   unsigned Size = totalSizeToAlloc<DeclAccessPair, ASTTemplateKWAndArgsInfo,
 				   IntercessionTargetDeclarationName,
                                    TemplateArgumentLoc>(
-				NumResults, HasTemplateKWAndArgsInfo, 0, NumTemplateArgs);
+     NumResults, HasTemplateKWAndArgsInfo, HasIntercessionTarget ? 1 : 0, NumTemplateArgs);
   void *Mem = Context.Allocate(Size, alignof(UnresolvedMemberExpr));
   return new (Mem)
-      UnresolvedMemberExpr(EmptyShell(), NumResults, HasTemplateKWAndArgsInfo);
+    UnresolvedMemberExpr(EmptyShell(), NumResults, HasTemplateKWAndArgsInfo, HasIntercessionTarget);
 }
 
 CXXRecordDecl *UnresolvedMemberExpr::getNamingClass() {

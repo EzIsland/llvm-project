@@ -1710,7 +1710,8 @@ MemberExpr *MemberExpr::Create(
 MemberExpr *MemberExpr::CreateEmpty(const ASTContext &Context,
                                     bool HasQualifier, bool HasFoundDecl,
                                     bool HasTemplateKWAndArgsInfo,
-                                    unsigned NumTemplateArgs) {
+                                    unsigned NumTemplateArgs,
+				    bool HasIntercessionTarget) {
   assert((!NumTemplateArgs || HasTemplateKWAndArgsInfo) &&
          "template args but no template arg info?");
   bool HasQualOrFound = HasQualifier || HasFoundDecl;
@@ -1720,7 +1721,7 @@ MemberExpr *MemberExpr::CreateEmpty(const ASTContext &Context,
 		       IntercessionTargetDeclarationName,
                        TemplateArgumentLoc>(HasQualOrFound ? 1 : 0,
                                             HasTemplateKWAndArgsInfo ? 1 : 0,
-					    0,
+					    HasIntercessionTarget ? 1 : 0,
 					    NumTemplateArgs);
   void *Mem = Context.Allocate(Size, alignof(MemberExpr));
   return new (Mem) MemberExpr(EmptyShell());
