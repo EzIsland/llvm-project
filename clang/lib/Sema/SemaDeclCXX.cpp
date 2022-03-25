@@ -3947,6 +3947,17 @@ void Sema::ActOnStartCXXInClassMemberInitializer() {
 void Sema::ActOnStartTrailingRequiresClause(Scope *S, Declarator &D) {
   if (!D.isFunctionDeclarator())
     return;
+
+  if(auto paramList = D.getInventedTemplateParameterList()) {
+    for(auto decl = paramList->begin(); decl != paramList->end(); ++decl) {
+      if(auto nttp = llvm::dyn_cast_or_null<NonTypeTemplateParmDecl>(*decl)) {
+	if(nttp->isImplicit()) {
+	  PushOnScopeChains(nttp, S, /*AddToContext=*/false);
+	}
+      }
+    }
+  }
+    
   auto &FTI = D.getFunctionTypeInfo();
   if (!FTI.Params)
     return;
@@ -3956,6 +3967,7 @@ void Sema::ActOnStartTrailingRequiresClause(Scope *S, Declarator &D) {
     if (ParamDecl->getDeclName())
       PushOnScopeChains(ParamDecl, S, /*AddToContext=*/false);
   }
+
 }
 
 ExprResult Sema::ActOnFinishTrailingRequiresClause(ExprResult ConstraintExpr) {

@@ -407,6 +407,14 @@ ArrayRef<TemplateArgument> FunctionTemplateDecl::getInjectedTemplateArgs() {
   return llvm::makeArrayRef(CommonPtr->InjectedArgs, Params->size());
 }
 
+ArrayRef<FunctionTemplateDecl::ConstexprParam> FunctionTemplateDecl::getConstexprParams() {
+  return ArrayRef<ConstexprParam>{getCommonPtr()->ConstexprParams};
+}
+
+void FunctionTemplateDecl::setConstexprParams(ArrayRef<ConstexprParam> NewParams) {
+  getCommonPtr()->ConstexprParams.assign(NewParams.begin(), NewParams.end());
+}
+
 void FunctionTemplateDecl::mergePrevDecl(FunctionTemplateDecl *Prev) {
   using Base = RedeclarableTemplateDecl;
 

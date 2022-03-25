@@ -3531,6 +3531,8 @@ ExprResult Parser::ParseBlockLiteralExpression() {
                                      /*RParenLoc=*/NoLoc,
                                      /*ArgInfo=*/nullptr,
                                      /*NumParams=*/0,
+				     /*ConstexprParamInfo*/nullptr,
+				     /*NumConstexprParams*/0,
                                      /*EllipsisLoc=*/NoLoc,
                                      /*RParenLoc=*/NoLoc,
                                      /*RefQualifierIsLvalueRef=*/true,

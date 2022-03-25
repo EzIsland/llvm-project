@@ -32,6 +32,7 @@
 // RUN: %clang++ -std=c++20 -fsyntax-only -fp0060 %s -DINTERCESSION_OF_EXPLICIT_ARROW_MEMBER_FUNCTION_CALL_ERRORS -Xclang -verify
 // RUN: %clang++ -std=c++20 -fsyntax-only -fp0060 %s -DINTERCESSION_OF_ARROW_CALL_ERRORS -Xclang -verify
 // RUN: %clang++ -std=c++20 -fsyntax-only -fp0060 %s -DINTERCESSION_MUTUAL_RECURSION -Xclang -verify
+// RUN: %clang++ -std=c++20 -fsyntax-only -fp0060 %s -DINTERCESSION_ON_DELETED_MEMBER -Xclang -verify
 // RUN: %clang++ -std=c++20 -fsyntax-only %s -DINTERCESSION_FEATURED_OFF_NEGATIVE -Xclang -verify
 
 #include <type_traits>
@@ -792,6 +793,26 @@ int Bar::operator.(Func&& aFunc, Args&&... aArgs) {
 int main() {
   Bar b;
   b.blah(); // This loops infinitely
+}
+
+#elif INTERCESSION_ON_DELETED_MEMBER
+
+struct Foo {
+  void foo() { };
+};
+
+struct Intercession {
+  void foo() = delete; // expected-note {{'foo' has been explicitly marked deleted here}}
+  
+  template<typename Func, typename... Args>
+  decltype(auto) operator.(Func&& aFunc, Args&&... aArgs) {
+    return std::forward<Func>(aFunc)(Foo{}, std::forward<Args>(aArgs)...);
+  }
+};
+
+int main() {
+  Intercession inter;
+  inter.foo(); // expected-error {{attempt to use a deleted function}}
 }
 
 #elif INTERCESSION_FEATURED_OFF_NEGATIVE

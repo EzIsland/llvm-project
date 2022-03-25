@@ -7901,6 +7901,14 @@ public:
   ///
   /// \returns true if an error occurred, false otherwise.
   bool CheckTemplateArgumentList(TemplateDecl *Template,
+				 TemplateParameterList *Params,
+                                 SourceLocation TemplateLoc,
+                                 TemplateArgumentListInfo &TemplateArgs,
+                                 bool PartialTemplateArgs,
+                                 SmallVectorImpl<TemplateArgument> &Converted,
+                                 bool UpdateArgsWithConversions = true,
+                                 bool *ConstraintsNotSatisfied = nullptr);
+  bool CheckTemplateArgumentList(TemplateDecl *Template,
                                  SourceLocation TemplateLoc,
                                  TemplateArgumentListInfo &TemplateArgs,
                                  bool PartialTemplateArgs,
@@ -8538,6 +8546,7 @@ public:
 
   TemplateDeductionResult SubstituteExplicitTemplateArguments(
       FunctionTemplateDecl *FunctionTemplate,
+      TemplateParameterList *Params,
       TemplateArgumentListInfo &ExplicitTemplateArgs,
       SmallVectorImpl<DeducedTemplateArgument> &Deduced,
       SmallVectorImpl<QualType> &ParamTypes, QualType *FunctionType,
@@ -8570,6 +8579,7 @@ public:
   TemplateDeductionResult DeduceTemplateArguments(
       FunctionTemplateDecl *FunctionTemplate,
       TemplateArgumentListInfo *ExplicitTemplateArgs, ArrayRef<Expr *> Args,
+      ArrayRef<Expr*> ConstexprArgs,
       FunctionDecl *&Specialization, sema::TemplateDeductionInfo &Info,
       bool PartialOverloading,
       llvm::function_ref<bool(ArrayRef<QualType>)> CheckNonDependent);

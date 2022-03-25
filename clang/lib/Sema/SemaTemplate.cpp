@@ -1506,7 +1506,7 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
     //   variable or variable template or the declaration of a function or
     //   function template.
 
-    if (DS.hasConstexprSpecifier())
+    if (DS.hasConstexprSpecifier() && D.getContext() == DeclaratorContext::TemplateParam)
       EmitDiag(DS.getConstexprSpecLoc());
 
     // [dcl.fct.spec]p1:
@@ -1530,8 +1530,8 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
       << QualType(TInfo->getType()->getContainedAutoType(), 0);
   }
 
-  assert(S->isTemplateParamScope() &&
-         "Non-type template parameter not in template parameter scope!");
+  //  assert(S->isTemplateParamScope() &&
+  //"Non-type template parameter not in template parameter scope!");
   bool Invalid = false;
 
   QualType T = CheckNonTypeTemplateParameterType(TInfo, D.getIdentifierLoc());
@@ -5635,10 +5635,24 @@ static bool diagnoseMissingArgument(Sema &S, SourceLocation Loc,
   return true;
 }
 
+bool Sema::CheckTemplateArgumentList(
+    TemplateDecl *Template, SourceLocation TemplateLoc,
+    TemplateArgumentListInfo &TemplateArgs, bool PartialTemplateArgs,
+    SmallVectorImpl<TemplateArgument> &Converted,
+    bool UpdateArgsWithConversions, bool *ConstraintsNotSatisfied) {
+    // Make sure we get the template parameter list from the most
+  // recent declaration, since that is the only one that is guaranteed to
+  // have all the default template argument information.
+  TemplateParameterList *Params =
+    cast<TemplateDecl>(Template->getMostRecentDecl())
+    ->getTemplateParameters();
+  return CheckTemplateArgumentList(Template, Params, TemplateLoc, TemplateArgs, PartialTemplateArgs, Converted, UpdateArgsWithConversions, ConstraintsNotSatisfied);
+}
+
 /// Check that the given template argument list is well-formed
 /// for specializing the given template.
 bool Sema::CheckTemplateArgumentList(
-    TemplateDecl *Template, SourceLocation TemplateLoc,
+    TemplateDecl *Template, TemplateParameterList *Params, SourceLocation TemplateLoc,
     TemplateArgumentListInfo &TemplateArgs, bool PartialTemplateArgs,
     SmallVectorImpl<TemplateArgument> &Converted,
     bool UpdateArgsWithConversions, bool *ConstraintsNotSatisfied) {
@@ -5651,12 +5665,7 @@ bool Sema::CheckTemplateArgumentList(
   // template.
   TemplateArgumentListInfo NewArgs = TemplateArgs;
 
-  // Make sure we get the template parameter list from the most
-  // recent declaration, since that is the only one that is guaranteed to
-  // have all the default template argument information.
-  TemplateParameterList *Params =
-      cast<TemplateDecl>(Template->getMostRecentDecl())
-          ->getTemplateParameters();
+
 
   SourceLocation RAngleLoc = NewArgs.getRAngleLoc();
 
@@ -5698,6 +5707,12 @@ bool Sema::CheckTemplateArgumentList(
     }
 
     if (ArgIdx < NumArgs) {
+      if(NewArgs[ArgIdx].getArgument().isNull()) {
+	Converted.push_back(NewArgs[ArgIdx].getArgument());
+	++ArgIdx;
+	++Param;
+	continue;
+      }
       // Check the template argument we were given.
       if (CheckTemplateArgument(*Param, NewArgs[ArgIdx], Template,
                                 TemplateLoc, RAngleLoc,

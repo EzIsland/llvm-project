@@ -9161,6 +9161,20 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
               ArrayRef<TemplateParameterList *>(TemplateParamLists)
                   .drop_back(1));
         }
+
+	// Copy over constexpr param info
+	unsigned FTIIdx;
+	if(D.isFunctionDeclarator(FTIIdx)) {
+	  DeclaratorChunk::FunctionTypeInfo& FTI = D.getTypeObject(FTIIdx).Fun;
+	  llvm::SmallVector<FunctionTemplateDecl::ConstexprParam, 2> ConstexprParams;
+	  for(unsigned i = 0; i != FTI.NumConstexprParams; ++i) {
+	    unsigned position = FTI.ConstexprParams[i].Position;
+	    Decl* parmDecl = FTI.ConstexprParams[i].Info.Param;
+	    NonTypeTemplateParmDecl* param = cast<NonTypeTemplateParmDecl>(parmDecl);
+	    ConstexprParams.push_back({param, position});
+	  }
+	  FunctionTemplate->setConstexprParams(ArrayRef<FunctionTemplateDecl::ConstexprParam>{ConstexprParams});
+	}
       } else {
         // This is a function template specialization.
         isFunctionTemplateSpecialization = true;
@@ -9444,6 +9458,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     // already checks for that case.
     if (FTIHasNonVoidParameters(FTI) && FTI.Params[0].Param) {
       for (unsigned i = 0, e = FTI.NumParams; i != e; ++i) {
+	if(!llvm::isa<ParmVarDecl>(FTI.Params[i].Param)) {
+	  continue;
+	}
         ParmVarDecl *Param = cast<ParmVarDecl>(FTI.Params[i].Param);
         assert(Param->getDeclContext() != NewFD && "Was set before ?");
         Param->setDeclContext(NewFD);
@@ -14342,6 +14359,17 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D,
     }
   }
 
+  if (FunctionTemplateDecl *FunTmpl = dyn_cast<FunctionTemplateDecl>(D)) {
+    auto params = FunTmpl->getTemplateParameters();
+    for(auto decl = params->begin(); decl != params->end(); ++decl) {
+      if(auto nttp = llvm::dyn_cast_or_null<NonTypeTemplateParmDecl>(*decl)) {
+	if(nttp->isImplicit()) {
+	  PushOnScopeChains(nttp, FnBodyScope);
+	}
+      }
+    }
+  }
+
   // Ensure that the function's exception specification is instantiated.
   if (const FunctionProtoType *FPT = FD->getType()->getAs<FunctionProtoType>())
     ResolveExceptionSpec(D->getLocation(), FPT);
@@ -14963,6 +14991,8 @@ NamedDecl *Sema::ImplicitlyDefineFunction(SourceLocation Loc,
                                              /*LParenLoc=*/NoLoc,
                                              /*Params=*/nullptr,
                                              /*NumParams=*/0,
+					     /*ConstexprParams=*/nullptr,
+                                             /*NumConstexprParams=*/0,
                                              /*EllipsisLoc=*/NoLoc,
                                              /*RParenLoc=*/NoLoc,
                                              /*RefQualifierIsLvalueRef=*/true,

@@ -976,6 +976,19 @@ SpecEntryTraits<FunctionTemplateSpecializationInfo> {
 
 /// Declaration of a template function.
 class FunctionTemplateDecl : public RedeclarableTemplateDecl {
+public:
+  ///
+  /// Represents a constexpr function parameter as a pointer to its associated NTTP
+  /// and its position in the argument list.
+  /// For instance if their are 3 constexpr parameters at positions 0, 2, and 5
+  /// And 4 non-constexpr paramaters, the parameters will be ordered as
+  /// ConstexprParams[0], Params[0], ConstexprParams[1], Parmas[1], Params[2], ConstexprParmas[2], Params[3]
+  /// 
+  struct ConstexprParam {
+    NonTypeTemplateParmDecl* Param;
+    unsigned Position;
+  };
+  
 protected:
   friend class FunctionDecl;
 
@@ -994,6 +1007,11 @@ protected:
     /// template, and is allocated lazily, since most function templates do not
     /// require the use of this information.
     TemplateArgument *InjectedArgs = nullptr;
+
+    ///
+    /// Vector holding the set of constexpr function parameters for this template.
+    ///
+    llvm::SmallVector<ConstexprParam, 2> ConstexprParams;
 
     Common() = default;
   };
@@ -1102,6 +1120,16 @@ public:
   /// we need to perform substitutions inside the definition of a function
   /// template.
   ArrayRef<TemplateArgument> getInjectedTemplateArgs();
+
+  ///
+  /// Retrieves reference to the array of constexpr parameters
+  ///
+  ArrayRef<ConstexprParam> getConstexprParams();
+
+  ///
+  /// Sets the constexpr params
+  ///
+  void setConstexprParams(ArrayRef<ConstexprParam>);
 
   /// Return whether this function template is an abbreviated function template,
   /// e.g. `void foo(auto x)` or `template<typename T> void foo(auto x)`

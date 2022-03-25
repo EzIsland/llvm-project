@@ -3220,14 +3220,15 @@ static bool isSimpleTemplateIdType(QualType T) {
 Sema::TemplateDeductionResult
 Sema::SubstituteExplicitTemplateArguments(
                                       FunctionTemplateDecl *FunctionTemplate,
+				      TemplateParameterList *TemplateParams,
                                TemplateArgumentListInfo &ExplicitTemplateArgs,
                        SmallVectorImpl<DeducedTemplateArgument> &Deduced,
                                  SmallVectorImpl<QualType> &ParamTypes,
                                           QualType *FunctionType,
                                           TemplateDeductionInfo &Info) {
   FunctionDecl *Function = FunctionTemplate->getTemplatedDecl();
-  TemplateParameterList *TemplateParams
-    = FunctionTemplate->getTemplateParameters();
+  //TemplateParameterList *TemplateParams
+  //= FunctionTemplate->getTemplateParameters();
 
   if (ExplicitTemplateArgs.size() == 0) {
     // No arguments to substitute; just copy over the parameter types and
@@ -3262,7 +3263,7 @@ Sema::SubstituteExplicitTemplateArguments(
   if (Inst.isInvalid())
     return TDK_InstantiationDepth;
 
-  if (CheckTemplateArgumentList(FunctionTemplate, SourceLocation(),
+  if (CheckTemplateArgumentList(FunctionTemplate, TemplateParams, SourceLocation(),
                                 ExplicitTemplateArgs, true, Builder, false) ||
       Trap.hasErrorOccurred()) {
     unsigned Index = Builder.size();
@@ -4087,12 +4088,47 @@ static Sema::TemplateDeductionResult DeduceTemplateArgumentsFromCallArgument(
 Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     FunctionTemplateDecl *FunctionTemplate,
     TemplateArgumentListInfo *ExplicitTemplateArgs, ArrayRef<Expr *> Args,
+    ArrayRef<Expr *> ConstexprArgs,
     FunctionDecl *&Specialization, TemplateDeductionInfo &Info,
     bool PartialOverloading,
     llvm::function_ref<bool(ArrayRef<QualType>)> CheckNonDependent) {
   if (FunctionTemplate->isInvalidDecl())
     return TDK_Invalid;
 
+  TemplateParameterList *TemplateParamList
+    = FunctionTemplate->getTemplateParameters();
+  // ArrayRef<NamedDecl*> templateParamArr = TemplateParamList->asArray();
+  // SmallVector<NamedDecl*> explicitParamArray;
+  // if(ExplicitTemplateArgs) {
+  //   for(unsigned i = 0; i != ExplicitTemplateArgs->size(); ++i) {
+  //     if(i < templateParamArr.size() && !templateParamArr[i]->isImplicit()) {
+  // 	explicitParamArray.push_back(templateParamArr[i]);
+  //     } else {
+  // 	return TDK_TooManyArguments;
+  //     }
+  //   }
+  // }
+
+  TemplateArgumentListInfo explicitTemplateArgsStorage;
+  if(!ConstexprArgs.empty() ) {
+    if(!ExplicitTemplateArgs) {
+      ExplicitTemplateArgs = &explicitTemplateArgsStorage;
+    }
+    ArrayRef<FunctionTemplateDecl::ConstexprParam> ConstexprParams = FunctionTemplate->getConstexprParams();
+    unsigned j = 0;
+    for(unsigned i = ExplicitTemplateArgs->size(); i < TemplateParamList->size(); ++i) {
+      if(j >= ConstexprArgs.size() || j >= ConstexprParams.size()) {
+	break;
+      }
+      if(ConstexprParams[j].Param == TemplateParamList->getParam(i)) {
+	ExplicitTemplateArgs->addArgument({TemplateArgument{ConstexprArgs[j]}, ConstexprArgs[j]});
+	++j;
+      } else {
+	ExplicitTemplateArgs->addArgument({});
+      }
+    }
+  }
+  
   FunctionDecl *Function = FunctionTemplate->getTemplatedDecl();
   unsigned NumParams = Function->getNumParams();
 
@@ -4124,7 +4160,7 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     TemplateDeductionResult Result;
     runWithSufficientStackSpace(Info.getLocation(), [&] {
       Result = SubstituteExplicitTemplateArguments(
-          FunctionTemplate, *ExplicitTemplateArgs, Deduced, ParamTypes, nullptr,
+        FunctionTemplate, TemplateParamList, *ExplicitTemplateArgs, Deduced, ParamTypes, nullptr,
           Info);
     });
     if (Result)
@@ -4326,8 +4362,8 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     TemplateDeductionResult Result;
     runWithSufficientStackSpace(Info.getLocation(), [&] {
       Result = SubstituteExplicitTemplateArguments(
-          FunctionTemplate, *ExplicitTemplateArgs, Deduced, ParamTypes,
-          &FunctionType, Info);
+        FunctionTemplate, TemplateParams, *ExplicitTemplateArgs, Deduced, ParamTypes,
+	&FunctionType, Info);
     });
     if (Result)
       return Result;

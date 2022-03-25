@@ -1269,6 +1269,17 @@ struct DeclaratorChunk {
         DefaultArgTokens(std::move(DefArgTokens)) {}
   };
 
+  /// Represents the parameter info for a constexpr parameter.
+  /// The Position of the parameter is specified as a 0-based index
+  /// The non-Constexpr parameters fill-in around the positions
+  /// For instance if their are 3 constexpr parameters at positions 0, 2, and 5
+  /// And 4 non-constexpr paramaters, the parameters will be ordered as
+  /// ConstexprParams[0], Params[0], ConstexprParams[1], Parmas[1], Params[2], ConstexprParmas[2], Params[3]
+  struct ConstexprParamInfo {
+    ParamInfo Info;
+    unsigned Position;
+  };
+
   struct TypeAndRange {
     ParsedType Ty;
     SourceRange Range;
@@ -1340,6 +1351,11 @@ struct DeclaratorChunk {
     /// there are no parameters specified.
     ParamInfo *Params;
 
+    /// Lists the constexpr parameters of this function
+    /// as well as their positions in the argument lists.
+    ConstexprParamInfo* ConstexprParams;
+    unsigned NumConstexprParams;
+
     /// DeclSpec for the function with the qualifier related info.
     DeclSpec *MethodQualifiers;
 
@@ -1385,6 +1401,15 @@ struct DeclaratorChunk {
         DeleteParams = false;
       }
       NumParams = 0;
+
+      for (unsigned I = 0; I < NumConstexprParams; ++I) {
+        ConstexprParams[I].Info.DefaultArgTokens.reset();
+      }
+      if(ConstexprParams) {
+        delete[] ConstexprParams;
+	ConstexprParams = nullptr;
+	NumConstexprParams = 0;
+      }
     }
 
     void destroy() {
@@ -1626,6 +1651,8 @@ struct DeclaratorChunk {
                                      bool IsAmbiguous,
                                      SourceLocation LParenLoc,
                                      ParamInfo *Params, unsigned NumParams,
+				     ConstexprParamInfo* ConstexprParams,
+				     unsigned NumConstexprParams,
                                      SourceLocation EllipsisLoc,
                                      SourceLocation RParenLoc,
                                      bool RefQualifierIsLvalueRef,

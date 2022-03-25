@@ -758,6 +758,8 @@ static void maybeSynthesizeBlockSignature(TypeProcessingState &state,
       /*LParenLoc=*/NoLoc,
       /*ArgInfo=*/nullptr,
       /*NumParams=*/0,
+      /*ConstexprArgInfo=*/nullptr,
+      /*ConstexprNumParams=*/0,
       /*EllipsisLoc=*/NoLoc,
       /*RParenLoc=*/NoLoc,
       /*RefQualifierIsLvalueRef=*/true,
@@ -3396,7 +3398,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     bool IsCXXAutoType =
         (Auto && Auto->getKeyword() != AutoTypeKeyword::GNUAutoType);
     bool IsDeducedReturnType = false;
-
     switch (D.getContext()) {
     case DeclaratorContext::LambdaExpr:
       // Declared return type of a lambda-declarator is implicit and is always
@@ -3411,6 +3412,15 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       break;
     case DeclaratorContext::Prototype:
     case DeclaratorContext::LambdaExprParameter: {
+      if(D.getDeclSpec().getConstexprSpecifier() != ConstexprSpecKind::Unspecified) {
+	// Treate constexpr parameters with auto/concept type as NTTPs
+	if (isa<DeducedTemplateSpecializationType>(Deduced) &&
+	    !SemaRef.getLangOpts().CPlusPlus20)
+	  Error = 19; // Template parameter (until C++20)
+	else if (!SemaRef.getLangOpts().CPlusPlus17)
+	  Error = 8; // Template parameter (until C++17)
+	break;
+      }
       InventedTemplateParameterInfo *Info = nullptr;
       if (D.getContext() == DeclaratorContext::Prototype) {
         // With concepts we allow 'auto' in function parameters.

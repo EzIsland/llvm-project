@@ -1382,7 +1382,9 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
             DeclaratorChunk::getFunction(
                 /*HasProto=*/true,
                 /*IsAmbiguous=*/false, LParenLoc, ParamInfo.data(),
-                ParamInfo.size(), EllipsisLoc, RParenLoc,
+                ParamInfo.size(),
+		nullptr, 0,
+		EllipsisLoc, RParenLoc,
                 /*RefQualifierIsLvalueRef=*/true,
                 /*RefQualifierLoc=*/NoLoc, MutableLoc, ESpecType, ESpecRange,
                 DynamicExceptions.data(), DynamicExceptionRanges.data(),
@@ -1405,6 +1407,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     // Parse parameter-declaration-clause.
     SmallVector<DeclaratorChunk::ParamInfo, 16> ParamInfo;
+    SmallVector<DeclaratorChunk::ConstexprParamInfo, 16> ConstexprParamInfo;
     SourceLocation EllipsisLoc;
 
     if (Tok.isNot(tok::r_paren)) {
@@ -1412,6 +1415,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
           CurTemplateDepthTracker.getOriginalDepth());
 
       ParseParameterDeclarationClause(D.getContext(), Attr, ParamInfo,
+				      ConstexprParamInfo,
                                       EllipsisLoc);
       // For a generic lambda, each 'auto' within the parameter declaration
       // clause creates a template type parameter, so increment the depth.
@@ -3406,9 +3410,14 @@ ExprResult Parser::ParseRequiresExpression() {
       ParsedAttributes FirstArgAttrs(getAttrFactory());
       SourceLocation EllipsisLoc;
       llvm::SmallVector<DeclaratorChunk::ParamInfo, 2> LocalParameters;
+      llvm::SmallVector<DeclaratorChunk::ConstexprParamInfo, 2> ConstexprLocalParameters;
       ParseParameterDeclarationClause(DeclaratorContext::RequiresExpr,
                                       FirstArgAttrs, LocalParameters,
+				      ConstexprLocalParameters,
                                       EllipsisLoc);
+      if(!ConstexprLocalParameters.empty()) {
+	Diag(ConstexprLocalParameters[0].Info.IdentLoc, diag::err_requires_expr_constexpr_parameter);
+      }
       if (EllipsisLoc.isValid())
         Diag(EllipsisLoc, diag::err_requires_expr_parameter_list_ellipsis);
       for (auto &ParamInfo : LocalParameters)

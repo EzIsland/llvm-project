@@ -3027,6 +3027,7 @@ private:
          DeclaratorContext DeclaratorContext,
          ParsedAttributes &attrs,
          SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
+	 SmallVectorImpl<DeclaratorChunk::ConstexprParamInfo> &ConstexprParamInfo,
          SourceLocation &EllipsisLoc);
   void ParseBracketDeclarator(Declarator &D);
   void ParseMisplacedBracketDeclarator(Declarator &D);

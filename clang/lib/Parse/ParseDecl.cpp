@@ -6572,6 +6572,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   bool HasProto = false;
   // Build up an array of information about the parsed arguments.
   SmallVector<DeclaratorChunk::ParamInfo, 16> ParamInfo;
+  SmallVector<DeclaratorChunk::ConstexprParamInfo, 4> ConstexprParamInfo;
   // Remember where we see an ellipsis, if any.
   SourceLocation EllipsisLoc;
 
@@ -6614,6 +6615,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   } else {
     if (Tok.isNot(tok::r_paren))
       ParseParameterDeclarationClause(D.getContext(), FirstArgAttrs, ParamInfo,
+				      ConstexprParamInfo,
                                       EllipsisLoc);
     else if (RequiresArg)
       Diag(Tok, diag::err_argument_required_after_attribute);
@@ -6723,7 +6725,8 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   // Remember that we parsed a function type, and remember the attributes.
   D.AddTypeInfo(DeclaratorChunk::getFunction(
                     HasProto, IsAmbiguous, LParenLoc, ParamInfo.data(),
-                    ParamInfo.size(), EllipsisLoc, RParenLoc,
+                    ParamInfo.size(), ConstexprParamInfo.data(),
+		    ConstexprParamInfo.size(), EllipsisLoc, RParenLoc,
                     RefQualifierIsLValueRef, RefQualifierLoc,
                     /*MutableLoc=*/SourceLocation(),
                     ESpecType, ESpecRange, DynamicExceptions.data(),
@@ -6868,6 +6871,7 @@ void Parser::ParseParameterDeclarationClause(
        DeclaratorContext DeclaratorCtx,
        ParsedAttributes &FirstArgAttrs,
        SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
+       SmallVectorImpl<DeclaratorChunk::ConstexprParamInfo> &ConstexprParamInfo,
        SourceLocation &EllipsisLoc) {
 
   // Avoid exceeding the maximum function scope depth.
@@ -6883,11 +6887,12 @@ void Parser::ParseParameterDeclarationClause(
   }
 
   do {
+
     // FIXME: Issue a diagnostic if we parsed an attribute-specifier-seq
     // before deciding this was a parameter-declaration-clause.
     if (TryConsumeToken(tok::ellipsis, EllipsisLoc))
       break;
-
+    
     // Parse the declaration-specifiers.
     // Just use the ParsingDeclaration "scope" of the declarator.
     DeclSpec DS(AttrFactory);
@@ -6908,6 +6913,7 @@ void Parser::ParseParameterDeclarationClause(
     DS.takeAttributesFrom(FirstArgAttrs);
 
     ParseDeclarationSpecifiers(DS);
+    bool isNTTP = DS.getConstexprSpecifier() == ConstexprSpecKind::Constexpr;
 
 
     // Parse the declarator.  This is "PrototypeContext" or
@@ -6986,65 +6992,95 @@ void Parser::ParseParameterDeclarationClause(
           ConsumeToken();
         }
       }
+      
       // Inform the actions module about the parameter declarator, so it gets
       // added to the current scope.
-      Decl *Param = Actions.ActOnParamDeclarator(getCurScope(), ParmDeclarator);
+      Decl *Param =nullptr;
+      if(!isNTTP) {
+	Param = Actions.ActOnParamDeclarator(getCurScope(), ParmDeclarator);
+      }
+      
       // Parse the default argument, if any. We parse the default
       // arguments in all dialects; the semantic analysis in
       // ActOnParamDefaultArgument will reject the default argument in
       // C.
       if (Tok.is(tok::equal)) {
-        SourceLocation EqualLoc = Tok.getLocation();
+	SourceLocation EqualLoc = Tok.getLocation();
 
-        // Parse the default argument
-        if (DeclaratorCtx == DeclaratorContext::Member) {
-          // If we're inside a class definition, cache the tokens
-          // corresponding to the default argument. We'll actually parse
-          // them when we see the end of the class definition.
-          DefArgToks.reset(new CachedTokens);
+	// Parse the default argument
+	if (DeclaratorCtx == DeclaratorContext::Member && !isNTTP) {
+	  // If we're inside a class definition, cache the tokens
+	  // corresponding to the default argument. We'll actually parse
+	  // them when we see the end of the class definition.
+	  DefArgToks.reset(new CachedTokens);
 
-          SourceLocation ArgStartLoc = NextToken().getLocation();
-          if (!ConsumeAndStoreInitializer(*DefArgToks, CIK_DefaultArgument)) {
-            DefArgToks.reset();
-            Actions.ActOnParamDefaultArgumentError(Param, EqualLoc);
-          } else {
-            Actions.ActOnParamUnparsedDefaultArgument(Param, EqualLoc,
-                                                      ArgStartLoc);
-          }
-        } else {
-          // Consume the '='.
-          ConsumeToken();
+	  SourceLocation ArgStartLoc = NextToken().getLocation();
+	  if (!ConsumeAndStoreInitializer(*DefArgToks, CIK_DefaultArgument)) {
+	    DefArgToks.reset();
+	    Actions.ActOnParamDefaultArgumentError(Param, EqualLoc);
+	  } else {
+	    Actions.ActOnParamUnparsedDefaultArgument(Param, EqualLoc,
+						      ArgStartLoc);
+	  }
+	} else {
+	  // Consume the '='.
+	  ConsumeToken();
 
-          // The argument isn't actually potentially evaluated unless it is
-          // used.
-          EnterExpressionEvaluationContext Eval(
-              Actions,
-              Sema::ExpressionEvaluationContext::PotentiallyEvaluatedIfUsed,
-              Param);
+	  // The argument isn't actually potentially evaluated unless it is
+	  // used.
+	  Sema::ExpressionEvaluationContext evalCtx =
+	    isNTTP ? Sema::ExpressionEvaluationContext::ConstantEvaluated
+	    : Sema::ExpressionEvaluationContext::PotentiallyEvaluatedIfUsed;
+	  EnterExpressionEvaluationContext Eval(Actions, evalCtx, Param);
 
-          ExprResult DefArgResult;
-          if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
-            Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
-            DefArgResult = ParseBraceInitializer();
-          } else
-            DefArgResult = ParseAssignmentExpression();
-          DefArgResult = Actions.CorrectDelayedTyposInExpr(DefArgResult);
-          if (DefArgResult.isInvalid()) {
-            Actions.ActOnParamDefaultArgumentError(Param, EqualLoc);
-            SkipUntil(tok::comma, tok::r_paren, StopAtSemi | StopBeforeMatch);
-          } else {
-            // Inform the actions module about the default argument
-            Actions.ActOnParamDefaultArgument(Param, EqualLoc,
-                                              DefArgResult.get());
-          }
-        }
+	  ExprResult DefArgResult;
+	  if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
+	    Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
+	    DefArgResult = ParseBraceInitializer();
+	  } else {
+	    DefArgResult = ParseAssignmentExpression();
+	  }
+	  DefArgResult = Actions.CorrectDelayedTyposInExpr(DefArgResult);
+	  if (DefArgResult.isInvalid()) {
+	    Actions.ActOnParamDefaultArgumentError(Param, EqualLoc);
+	    SkipUntil(tok::comma, tok::r_paren, StopAtSemi | StopBeforeMatch);
+	  } else {
+	    if(isNTTP) {
+	      Param = Actions.ActOnNonTypeTemplateParameter(getCurScope(), ParmDeclarator,
+							    0, 0, ParmDeclarator.getIdentifierLoc(),
+							    DefArgResult.get());
+	    } else {
+	      // Inform the actions module about the default argument
+	      Actions.ActOnParamDefaultArgument(Param, EqualLoc,
+						DefArgResult.get());
+	    }
+	  }
+	}
       }
-
-      ParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
-                                          ParmDeclarator.getIdentifierLoc(),
-                                          Param, std::move(DefArgToks)));
+      if(Param == nullptr) {
+	Param = Actions.ActOnNonTypeTemplateParameter(getCurScope(), ParmDeclarator,
+						      0, 0, ParmDeclarator.getIdentifierLoc(),
+						      nullptr);
+      }
+      
+      if(isNTTP) {
+	InventedTemplateParameterInfo* Info = &Actions.InventedParameterInfos.back();
+	llvm::dyn_cast_or_null<NonTypeTemplateParmDecl>(Param)->setPosition(Info->TemplateParams.size());
+	llvm::dyn_cast_or_null<NonTypeTemplateParmDecl>(Param)->setDepth(Info->AutoTemplateParameterDepth);
+	Param->setImplicit(true);
+	Info->TemplateParams.push_back(llvm::dyn_cast_or_null<NamedDecl>(Param));
+	unsigned position = ParamInfo.size() + ConstexprParamInfo.size();
+	auto pinfo = DeclaratorChunk::ParamInfo(ParmII,
+				   ParmDeclarator.getIdentifierLoc(),
+				   Param, std::move(DefArgToks));
+	ConstexprParamInfo.push_back(DeclaratorChunk::ConstexprParamInfo{std::move(pinfo),position});
+      } else {
+	ParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
+			    ParmDeclarator.getIdentifierLoc(),
+                            Param, std::move(DefArgToks)));
+      }
     }
-
+    
     if (TryConsumeToken(tok::ellipsis, EllipsisLoc)) {
       if (!getLangOpts().CPlusPlus) {
         // We have ellipsis without a preceding ',', which is ill-formed
@@ -7077,7 +7113,7 @@ void Parser::ParseParameterDeclarationClause(
     }
 
     // If the next token is a comma, consume it and keep reading arguments.
-  } while (TryConsumeToken(tok::comma));
+    } while (TryConsumeToken(tok::comma));
 }
 
 /// [C90]   direct-declarator '[' constant-expression[opt] ']'

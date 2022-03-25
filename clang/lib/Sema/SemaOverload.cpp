@@ -6311,6 +6311,16 @@ static bool IsAcceptableNonMemberOperatorCandidate(ASTContext &Context,
   return false;
 }
 
+static unsigned getNTTPPosition(FunctionTemplateDecl* FunctionTemplate, NamedDecl* decl) {
+  auto params = FunctionTemplate->getTemplateParameters()->asArray();
+  for(unsigned idx = 0; idx != params.size(); ++idx) {
+    if(params[idx] == decl) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
 /// AddOverloadCandidate - Adds the given function to the set of
 /// candidate functions, using the given function call arguments.  If
 /// @p SuppressUserConversions, then don't allow user-defined
@@ -6452,6 +6462,9 @@ void Sema::AddOverloadCandidate(
   }
 
   unsigned NumParams = Proto->getNumParams();
+  if(auto FunctionTemplate = Function->getPrimaryTemplate()) {
+    NumParams += FunctionTemplate->getConstexprParams().size();
+  }
 
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
@@ -6499,6 +6512,14 @@ void Sema::AddOverloadCandidate(
     }
   }
 
+  SmallVector<FunctionTemplateDecl::ConstexprParam> ConstexprParamsStorage;
+  ArrayRef<FunctionTemplateDecl::ConstexprParam> ConstexprParams = ConstexprParamsStorage;
+  if(auto FunctionTemplate = Function->getPrimaryTemplate()) {
+    ConstexprParams = FunctionTemplate->getConstexprParams();
+  }
+
+  unsigned ConstexprParamIdx = 0;
+  unsigned NonConstexprParamIdx = 0;
   // Determine the implicit conversion sequences for each of the
   // arguments.
   for (unsigned ArgIdx = 0; ArgIdx < Args.size(); ++ArgIdx) {
@@ -6512,7 +6533,17 @@ void Sema::AddOverloadCandidate(
       // exist for each argument an implicit conversion sequence
       // (13.3.3.1) that converts that argument to the corresponding
       // parameter of F.
-      QualType ParamType = Proto->getParamType(ArgIdx);
+      QualType ParamType;
+      if(ConstexprParamIdx < ConstexprParams.size() && ConstexprParams[ConstexprParamIdx].Position == ArgIdx) {
+	auto FunctionTemplate = Function->getPrimaryTemplate();
+	unsigned nttpPosition = getNTTPPosition(FunctionTemplate, ConstexprParams[ConstexprParamIdx].Param);
+	auto templateArg = Function->getTemplateSpecializationArgs()->data()[nttpPosition];
+	ParamType = templateArg.getNonTypeTemplateArgumentType();
+	++ConstexprParamIdx;
+      } else {
+	ParamType = Proto->getParamType(NonConstexprParamIdx);
+	++NonConstexprParamIdx;
+      }
       Candidate.Conversions[ConvIdx] = TryCopyInitialization(
           *this, Args[ArgIdx], ParamType, SuppressUserConversions,
           /*InOverloadResolution=*/true,
@@ -7052,6 +7083,30 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
   }
 }
 
+static bool splitConstexprParamArgs(FunctionTemplateDecl* FunctionTemplate,
+				    ArrayRef<Expr*> Args,
+				    SmallVector<Expr*>& NonConstexprArgs,
+				    SmallVector<Expr*>& ConstexprArgs) {
+  ArrayRef<FunctionTemplateDecl::ConstexprParam> constexprParams = FunctionTemplate->getConstexprParams();
+  auto constexprParam = constexprParams.begin();
+  for(unsigned i = 0; i != Args.size(); ++i) {
+    if(constexprParam != constexprParams.end() && constexprParam->Position == i) {
+      ConstexprArgs.push_back(Args[i]);
+      ++constexprParam;
+    } else {
+      NonConstexprArgs.push_back(Args[i]);
+    }
+  }
+  // Verify the unconsumed parameters have default arguments
+  while(constexprParam != constexprParams.end()) {
+    if(!constexprParam->Param->hasDefaultArgument()) {
+      return false;
+    }
+    ++constexprParam;
+  }
+  return true;
+}
+
 /// Add a C++ member function template as a candidate to the candidate
 /// set, using template argument deduction to produce an appropriate member
 /// function template specialization.
@@ -7059,11 +7114,22 @@ void Sema::AddMethodTemplateCandidate(
     FunctionTemplateDecl *MethodTmpl, DeclAccessPair FoundDecl,
     CXXRecordDecl *ActingContext,
     TemplateArgumentListInfo *ExplicitTemplateArgs, QualType ObjectType,
-    Expr::Classification ObjectClassification, ArrayRef<Expr *> Args,
+    Expr::Classification ObjectClassification, ArrayRef<Expr *> AllArgs,
     OverloadCandidateSet &CandidateSet, bool SuppressUserConversions,
     bool PartialOverloading, OverloadCandidateParamOrder PO) {
   if (!CandidateSet.isNewCandidate(MethodTmpl, PO))
     return;
+
+  SmallVector<Expr*> Args;
+  SmallVector<Expr*> ConstexprArgs;
+  if(!splitConstexprParamArgs(MethodTmpl, AllArgs, Args, ConstexprArgs)) {
+    OverloadCandidate &Candidate = CandidateSet.addCandidate();
+    Candidate.FoundDecl = FoundDecl;
+    Candidate.Function = MethodTmpl->getTemplatedDecl();
+    Candidate.Viable = false;
+    Candidate.FailureKind = ovl_fail_too_few_arguments;
+    return;
+  }
 
   // C++ [over.match.funcs]p7:
   //   In each case where a candidate is a function template, candidate
@@ -7078,7 +7144,7 @@ void Sema::AddMethodTemplateCandidate(
   FunctionDecl *Specialization = nullptr;
   ConversionSequenceList Conversions;
   if (TemplateDeductionResult Result = DeduceTemplateArguments(
-          MethodTmpl, ExplicitTemplateArgs, Args, Specialization, Info,
+	  MethodTmpl, ExplicitTemplateArgs, Args, ConstexprArgs, Specialization, Info,
           PartialOverloading, [&](ArrayRef<QualType> ParamTypes) {
             return CheckNonDependentConversions(
                 MethodTmpl, ParamTypes, Args, CandidateSet, Conversions,
@@ -7129,12 +7195,23 @@ static bool isNonDependentlyExplicit(FunctionTemplateDecl *FTD) {
 /// an appropriate function template specialization.
 void Sema::AddTemplateOverloadCandidate(
     FunctionTemplateDecl *FunctionTemplate, DeclAccessPair FoundDecl,
-    TemplateArgumentListInfo *ExplicitTemplateArgs, ArrayRef<Expr *> Args,
+    TemplateArgumentListInfo *ExplicitTemplateArgs, ArrayRef<Expr *> AllArgs,
     OverloadCandidateSet &CandidateSet, bool SuppressUserConversions,
     bool PartialOverloading, bool AllowExplicit, ADLCallKind IsADLCandidate,
     OverloadCandidateParamOrder PO) {
   if (!CandidateSet.isNewCandidate(FunctionTemplate, PO))
     return;
+
+  SmallVector<Expr*> Args;
+  SmallVector<Expr*> ConstexprArgs;
+  if(!splitConstexprParamArgs(FunctionTemplate, AllArgs, Args, ConstexprArgs)) {
+    OverloadCandidate &Candidate = CandidateSet.addCandidate();
+    Candidate.FoundDecl = FoundDecl;
+    Candidate.Function = FunctionTemplate->getTemplatedDecl();
+    Candidate.Viable = false;
+    Candidate.FailureKind = ovl_fail_too_few_arguments;
+    return;
+  }
 
   // If the function template has a non-dependent explicit specification,
   // exclude it now if appropriate; we are not permitted to perform deduction
@@ -7161,7 +7238,7 @@ void Sema::AddTemplateOverloadCandidate(
   FunctionDecl *Specialization = nullptr;
   ConversionSequenceList Conversions;
   if (TemplateDeductionResult Result = DeduceTemplateArguments(
-          FunctionTemplate, ExplicitTemplateArgs, Args, Specialization, Info,
+	  FunctionTemplate, ExplicitTemplateArgs, Args, ConstexprArgs, Specialization, Info,
           PartialOverloading, [&](ArrayRef<QualType> ParamTypes) {
             return CheckNonDependentConversions(
                 FunctionTemplate, ParamTypes, Args, CandidateSet, Conversions,
@@ -7196,7 +7273,7 @@ void Sema::AddTemplateOverloadCandidate(
   // deduction as a candidate.
   assert(Specialization && "Missing function template specialization?");
   AddOverloadCandidate(
-      Specialization, FoundDecl, Args, CandidateSet, SuppressUserConversions,
+      Specialization, FoundDecl, AllArgs, CandidateSet, SuppressUserConversions,
       PartialOverloading, AllowExplicit,
       /*AllowExplicitConversions*/ false, IsADLCandidate, Conversions, PO);
 }
@@ -7221,7 +7298,7 @@ bool Sema::CheckNonDependentConversions(
   unsigned ThisConversions = HasThisConversion ? 1 : 0;
 
   Conversions =
-      CandidateSet.allocateConversionSequences(ThisConversions + Args.size());
+    CandidateSet.allocateConversionSequences(ThisConversions + Args.size() + FunctionTemplate->getConstexprParams().size());
 
   // Overload resolution is always an unevaluated context.
   EnterExpressionEvaluationContext Unevaluated(
@@ -13143,9 +13220,18 @@ static ExprResult FinishOverloadedCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
     if (SemaRef.DiagnoseUseOfDecl(FDecl, ULE->getNameLoc()))
       return ExprError();
     Fn = SemaRef.FixOverloadedFunctionReference(Fn, (*Best)->FoundDecl, FDecl);
-    return SemaRef.BuildResolvedCallExpr(Fn, FDecl, LParenLoc, Args, RParenLoc,
-                                         ExecConfig, /*IsExecConfig=*/false,
-                                         (*Best)->IsADLCandidate);
+    SmallVector<Expr*> nonConstexprArgs;
+    SmallVector<Expr*> constexprArgs;
+    if(auto functionTemplate = FDecl->getPrimaryTemplate()) {
+      splitConstexprParamArgs(functionTemplate, Args, nonConstexprArgs, constexprArgs);
+      return SemaRef.BuildResolvedCallExpr(Fn, FDecl, LParenLoc, MultiExprArg{nonConstexprArgs}, RParenLoc,
+					   ExecConfig, /*IsExecConfig=*/false,
+					   (*Best)->IsADLCandidate);
+    } else {
+      return SemaRef.BuildResolvedCallExpr(Fn, FDecl, LParenLoc, Args, RParenLoc,
+					   ExecConfig, /*IsExecConfig=*/false,
+					   (*Best)->IsADLCandidate);
+    }
   }
 
   case OR_No_Viable_Function: {

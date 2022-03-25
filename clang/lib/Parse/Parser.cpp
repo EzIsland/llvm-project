@@ -1305,7 +1305,7 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
   // With abbreviated function templates - we need to explicitly add depth to
   // account for the implicit template parameter list induced by the template.
   if (auto *Template = dyn_cast_or_null<FunctionTemplateDecl>(Res))
-    if (Template->isAbbreviated() &&
+    if (Template->isAbbreviated() && // TODO: Needs updating for constexpr parameters
         Template->getTemplateParameters()->getParam(0)->isImplicit())
       // First template parameter is implicit - meaning no explicit template
       // parameter list was specified.

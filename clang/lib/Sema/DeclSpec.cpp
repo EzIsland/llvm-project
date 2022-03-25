@@ -162,6 +162,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
                                              SourceLocation LParenLoc,
                                              ParamInfo *Params,
                                              unsigned NumParams,
+					     ConstexprParamInfo* ConstexprParams,
+					     unsigned NumConstexprParams,
                                              SourceLocation EllipsisLoc,
                                              SourceLocation RParenLoc,
                                              bool RefQualifierIsLvalueRef,
@@ -201,6 +203,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
   I.Fun.DeleteParams            = false;
   I.Fun.NumParams               = NumParams;
   I.Fun.Params                  = nullptr;
+  I.Fun.NumConstexprParams      = NumConstexprParams;
+  I.Fun.ConstexprParams         = nullptr;
   I.Fun.RefQualifierIsLValueRef = RefQualifierIsLvalueRef;
   I.Fun.RefQualifierLoc         = RefQualifierLoc;
   I.Fun.MutableLoc              = MutableLoc;
@@ -249,6 +253,12 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
     }
     for (unsigned i = 0; i < NumParams; i++)
       I.Fun.Params[i] = std::move(Params[i]);
+  }
+  if(NumConstexprParams) {
+    I.Fun.ConstexprParams = new DeclaratorChunk::ConstexprParamInfo[NumConstexprParams];
+    for(unsigned i = 0; i < NumConstexprParams; ++i) {
+      I.Fun.ConstexprParams[i] = std::move(ConstexprParams[i]);
+    }
   }
 
   // Check what exception specification information we should actually store.
