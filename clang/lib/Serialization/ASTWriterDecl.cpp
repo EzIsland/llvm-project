@@ -101,6 +101,7 @@ namespace clang {
     void VisitVarDecl(VarDecl *D);
     void VisitImplicitParamDecl(ImplicitParamDecl *D);
     void VisitParmVarDecl(ParmVarDecl *D);
+    void VisitConstexprParmVarDecl(ConstexprParmVarDecl* D);
     void VisitDecompositionDecl(DecompositionDecl *D);
     void VisitBindingDecl(BindingDecl *D);
     void VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
@@ -1130,6 +1131,12 @@ void ASTDeclWriter::VisitParmVarDecl(ParmVarDecl *D) {
   assert(D->getPreviousDecl() == nullptr && "PARM_VAR_DECL can't be redecl");
   assert(!D->isStaticDataMember() &&
          "PARM_VAR_DECL can't be static data member");
+}
+
+void ASTDeclWriter::VisitConstexprParmVarDecl(ConstexprParmVarDecl* D) {
+  VisitParmVarDecl(D);
+  Record.push_back(D->getCategory());
+  Record.AddDeclRef(D->getConstexprParameter());
 }
 
 void ASTDeclWriter::VisitDecompositionDecl(DecompositionDecl *D) {

@@ -3321,6 +3321,7 @@ ExprResult Sema::BuildDeclarationNameExpr(
     LLVM_FALLTHROUGH;
 
   case Decl::ImplicitParam:
+  case Decl::ConstexprParmVar:
   case Decl::ParmVar: {
     // These are always l-values.
     valueKind = VK_LValue;

@@ -3248,6 +3248,46 @@ void DecompositionDecl::printName(llvm::raw_ostream &os) const {
   os << ']';
 }
 
+ConstexprParmVarDecl::ConstexprParmVarDecl(Kind DK, ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
+					   SourceLocation IdLoc, IdentifierInfo *Id, QualType T,
+					   TypeSourceInfo *TInfo, StorageClass S, Expr *DefArg,
+					   ConstexprCategory Category, NonTypeTemplateParmDecl* ConstexprParameter)
+  : ParmVarDecl(DK, C, DC, StartLoc, IdLoc, Id, T, TInfo, S, DefArg)
+  , Category(Category)
+  , ConstexprParameter(ConstexprParameter) {
+  assert(ConstexprParameter != nullptr);
+}
+
+NonTypeTemplateParmDecl* ConstexprParmVarDecl::getConstexprParameter() const {
+  return ConstexprParameter;
+}
+
+ConstexprParmVarDecl::ConstexprCategory ConstexprParmVarDecl::getCategory() const {
+  return Category;
+}
+
+void ConstexprParmVarDecl::setConstexprParameter(NonTypeTemplateParmDecl* Value) {
+  ConstexprParameter = Value;
+}
+
+void ConstexprParmVarDecl::setCategory(ConstexprCategory Value) {
+  Category = Value;
+}
+
+ConstexprParmVarDecl* ConstexprParmVarDecl::Create(ASTContext &C,
+						   DeclContext *DC,
+						   SourceLocation StartLoc,
+						   SourceLocation IdLoc,
+						   IdentifierInfo *Id,
+						   QualType T,
+						   TypeSourceInfo *TInfo,
+						   StorageClass S,
+						   Expr *DefArg,
+						   ConstexprCategory Category,
+						   NonTypeTemplateParmDecl* ConstexprParameter) {
+  return new (C, DC) ConstexprParmVarDecl(ConstexprParmVar, C, DC, StartLoc, IdLoc, Id, T, TInfo, S, DefArg, Category, ConstexprParameter);
+}
+
 void MSPropertyDecl::anchor() {}
 
 MSPropertyDecl *MSPropertyDecl::Create(ASTContext &C, DeclContext *DC,

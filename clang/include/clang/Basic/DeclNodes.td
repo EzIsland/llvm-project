@@ -59,6 +59,7 @@ def Named : DeclNode<Decl, "named declarations", 1>;
             : DeclNode<VarTemplateSpecialization>;
         def ImplicitParam : DeclNode<Var>;
         def ParmVar : DeclNode<Var, "parameters">;
+          def ConstexprParmVar : DeclNode<ParmVar, "constexpr parameters">;
         def Decomposition : DeclNode<Var>;
         def OMPCapturedExpr : DeclNode<Var>;
       def NonTypeTemplateParm : DeclNode<Declarator>;

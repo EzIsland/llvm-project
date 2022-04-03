@@ -2661,6 +2661,10 @@ Decl *TemplateDeclInstantiator::VisitParmVarDecl(ParmVarDecl *D) {
                                   /*ExpectParameterPack=*/ false);
 }
 
+Decl *TemplateDeclInstantiator::VisitConstexprParmVarDecl(ConstexprParmVarDecl *D) {
+  return VisitParmVarDecl(D);
+}
+
 Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
                                                     TemplateTypeParmDecl *D) {
   assert(D->getTypeForDecl()->isTemplateTypeParmType());

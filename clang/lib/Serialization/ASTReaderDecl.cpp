@@ -376,6 +376,7 @@ namespace clang {
     void VisitVarDecl(VarDecl *VD) { VisitVarDeclImpl(VD); }
     void VisitImplicitParamDecl(ImplicitParamDecl *PD);
     void VisitParmVarDecl(ParmVarDecl *PD);
+    void VisitConstexprParmVarDecl(ConstexprParmVarDecl* D);
     void VisitDecompositionDecl(DecompositionDecl *DD);
     void VisitBindingDecl(BindingDecl *BD);
     void VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
@@ -1549,6 +1550,12 @@ void ASTDeclReader::VisitParmVarDecl(ParmVarDecl *PD) {
 
   // FIXME: If this is a redeclaration of a function from another module, handle
   // inheritance of default arguments.
+}
+
+void ASTDeclReader::VisitConstexprParmVarDecl(ConstexprParmVarDecl* D) {
+  VisitParmVarDecl(D);
+  D->setCategory(ConstexprParmVarDecl::ConstexprCategory(Record.readInt()));
+  D->setConstexprParameter(readDeclAs<NonTypeTemplateParmDecl>());
 }
 
 void ASTDeclReader::VisitDecompositionDecl(DecompositionDecl *DD) {

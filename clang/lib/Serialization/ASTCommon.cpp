@@ -437,6 +437,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   // These indirectly derive from Redeclarable<T> but are not actually
   // redeclarable.
   case Decl::ImplicitParam:
+  case Decl::ConstexprParmVar:
   case Decl::ParmVar:
   case Decl::ObjCTypeParam:
     return false;

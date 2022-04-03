@@ -490,6 +490,7 @@ private:
   bool TraverseDeclContextHelper(DeclContext *DC);
   bool TraverseFunctionHelper(FunctionDecl *D);
   bool TraverseVarHelper(VarDecl *D);
+  bool TraverseParmVarHelper(ParmVarDecl *D);
   bool TraverseOMPExecutableDirective(OMPExecutableDirective *S);
   bool TraverseOMPLoopDirective(OMPLoopDirective *S);
   bool TraverseOMPClause(OMPClause *C);
@@ -2168,7 +2169,8 @@ DEF_TRAVERSE_DECL(NonTypeTemplateParmDecl, {
     TRY_TO(TraverseStmt(D->getDefaultArgument()));
 })
 
-DEF_TRAVERSE_DECL(ParmVarDecl, {
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseParmVarHelper(ParmVarDecl *D) {
   TRY_TO(TraverseVarHelper(D));
 
   if (D->hasDefaultArg() && D->hasUninstantiatedDefaultArg() &&
@@ -2178,7 +2180,13 @@ DEF_TRAVERSE_DECL(ParmVarDecl, {
   if (D->hasDefaultArg() && !D->hasUninstantiatedDefaultArg() &&
       !D->hasUnparsedDefaultArg())
     TRY_TO(TraverseStmt(D->getDefaultArg()));
-})
+
+  return true;
+}
+
+DEF_TRAVERSE_DECL(ParmVarDecl, { TRY_TO(TraverseParmVarHelper(D)); })
+
+DEF_TRAVERSE_DECL(ConstexprParmVarDecl, { TRY_TO(TraverseParmVarHelper(D)); })
 
 DEF_TRAVERSE_DECL(RequiresExprBodyDecl, {})
 

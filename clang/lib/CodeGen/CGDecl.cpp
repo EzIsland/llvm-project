@@ -68,6 +68,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::IndirectField:
   case Decl::ObjCIvar:
   case Decl::ObjCAtDefsField:
+  case Decl::ConstexprParmVar:
   case Decl::ParmVar:
   case Decl::ImplicitParam:
   case Decl::ClassTemplate:

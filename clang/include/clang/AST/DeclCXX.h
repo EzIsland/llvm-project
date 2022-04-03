@@ -72,6 +72,7 @@ class MemberSpecializationInfo;
 class BaseUsingDecl;
 class TemplateDecl;
 class TemplateParameterList;
+class NonTypeTemplateParmDecl;
 class UsingDecl;
 
 /// Represents an access specifier followed by colon ':'.
@@ -4056,6 +4057,79 @@ public:
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == Decomposition; }
 };
+
+  ///
+  /// C++ extension for constexpr function parameters, p1045.
+  /// A ConstexprParmVarDecl is a ParmVarDecl that has been declared with the
+  /// 'constexpr' or 'constexpr?' keywords. In the former case, the parameter
+  /// is stand in for a NonTypeTemplateParameter which will be substituted into the
+  /// function body during instantiation. In the latter case, the parameter
+  /// will be substitued for either a NonTypeTemplateParameter or a ParmVarDecl
+  /// during template instantiation depending on the whether the input argument
+  /// is a constant expression.
+  ///
+  /// This class is only used in the FunctionDecl of primary templates. Instantiated templates.
+  ///
+  class ConstexprParmVarDecl : public ParmVarDecl {
+  public:
+    ///
+    /// Enum describing the type of constexpr parameter declaration.
+    /// CC_CONSTEXPR - Declared with the 'constexpr' keyword.
+    /// CC_MAYBE_CONSTEXPR - Declared with the 'constexpr?' keyword.
+    ///
+    enum ConstexprCategory { CC_CONSTEXPR, CC_MAYBE_CONSTEXPR };
+
+    static ConstexprParmVarDecl* Create(ASTContext &C,
+					DeclContext *DC,
+					SourceLocation StartLoc,
+					SourceLocation IdLoc,
+					IdentifierInfo *Id,
+					QualType T,
+					TypeSourceInfo *TInfo,
+					StorageClass S,
+					Expr *DefArg,
+					ConstexprCategory Category,
+					NonTypeTemplateParmDecl* ConstexprParameter);
+
+    ///
+    /// Retrieve the constexpr parameter which is used for substitution
+    /// of this ParmVarDecl during instantiation
+    ///
+    NonTypeTemplateParmDecl* getConstexprParameter() const;
+
+    ///
+    /// Get The ConstexprCategory of this decl.
+    ///
+    ConstexprCategory getCategory() const;
+
+    void setConstexprParameter(NonTypeTemplateParmDecl*);
+    void setCategory(ConstexprCategory);
+
+  protected:
+    ///
+    /// Initializes this ConstexprParmVarDecl with the arguments for ParmVarDecl
+    /// and the additional Category and ConstexprParameter argument.
+    ///
+    ConstexprParmVarDecl(Kind DK, ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
+			 SourceLocation IdLoc, IdentifierInfo *Id, QualType T,
+			 TypeSourceInfo *TInfo, StorageClass S, Expr *DefArg,
+			 ConstexprCategory Category, NonTypeTemplateParmDecl* ConstexprParameter);
+    
+  private:
+    ///
+    /// Category describing the type of ConstexprParmVarDecl.
+    ///
+    ConstexprCategory Category;
+
+    ///
+    /// For the CONSTEXPR category, this is the non-type template parameter
+    /// which is substitued for this decl during instantiation.
+    ///
+    /// For the MAYBE_CONSTEXPR category, this is the parameter which is substituted
+    /// during instantiation with a constexpr argument.
+    ///
+    NonTypeTemplateParmDecl* ConstexprParameter;
+  };
 
 /// An instance of this class represents the declaration of a property
 /// member.  This is a Microsoft extension to C++, first introduced in

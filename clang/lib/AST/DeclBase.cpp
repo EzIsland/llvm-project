@@ -745,6 +745,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case EnumConstant:
     case Var:
     case ImplicitParam:
+    case ConstexprParmVar:
     case ParmVar:
     case ObjCMethod:
     case ObjCProperty:
