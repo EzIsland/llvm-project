@@ -14363,7 +14363,7 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D,
     auto params = FunTmpl->getTemplateParameters();
     for(auto decl = params->begin(); decl != params->end(); ++decl) {
       if(auto nttp = llvm::dyn_cast_or_null<NonTypeTemplateParmDecl>(*decl)) {
-	if(nttp->isImplicit()) {
+	if(nttp->isImplicit() && nttp->getIdentifier()) {
 	  PushOnScopeChains(nttp, FnBodyScope);
 	}
       }

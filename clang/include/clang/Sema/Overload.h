@@ -258,6 +258,8 @@ class Sema;
   /// single word.
   class StandardConversionSequence {
   public:
+    StandardConversionSequence();
+    
     /// First -- The first conversion can be an lvalue-to-rvalue
     /// conversion, array-to-pointer conversion, or
     /// function-to-pointer conversion.
@@ -311,6 +313,10 @@ class Sema;
     /// Whether this binds a reference to an object with a different
     /// Objective-C lifetime qualifier.
     unsigned ObjCLifetimeConversionBinding : 1;
+
+    /// Whether the target of this conversion is a constexpr 
+    /// function parameter
+    unsigned ConstexprParameter : 1;
 
     /// FromType - The type that this conversion is converting
     /// from. This is an opaque pointer that can be translated into a

@@ -85,7 +85,8 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
                                  bool InOverloadResolution,
                                  StandardConversionSequence &SCS,
                                  bool CStyle,
-                                 bool AllowObjCWritebackConversion);
+                                 bool AllowObjCWritebackConversion,
+				 bool ConstexprParameter = false);
 
 static bool IsTransparentUnionStandardConversion(Sema &S, Expr* From,
                                                  QualType &ToType,
@@ -97,7 +98,8 @@ IsUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
                         UserDefinedConversionSequence& User,
                         OverloadCandidateSet& Conversions,
                         AllowedExplicit AllowExplicit,
-                        bool AllowObjCConversionOnExplicit);
+                        bool AllowObjCConversionOnExplicit,
+			bool ConstexprParameter);
 
 static ImplicitConversionSequence::CompareKind
 CompareStandardConversionSequences(Sema &S, SourceLocation Loc,
@@ -187,6 +189,10 @@ static const char* GetImplicitConversionName(ImplicitConversionKind Kind) {
     "Incompatible pointer conversion"
   };
   return Name[Kind];
+}
+
+StandardConversionSequence::StandardConversionSequence()
+  : ConstexprParameter(false) {
 }
 
 /// StandardConversionSequence - Set the standard conversion
@@ -1326,7 +1332,8 @@ TryUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
                          bool InOverloadResolution,
                          bool CStyle,
                          bool AllowObjCWritebackConversion,
-                         bool AllowObjCConversionOnExplicit) {
+                         bool AllowObjCConversionOnExplicit,
+			 bool ConstexprParameter = false) {
   ImplicitConversionSequence ICS;
 
   if (SuppressUserConversions) {
@@ -1341,7 +1348,8 @@ TryUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
                                    OverloadCandidateSet::CSK_Normal);
   switch (IsUserDefinedConversion(S, From, ToType, ICS.UserDefined,
                                   Conversions, AllowExplicit,
-                                  AllowObjCConversionOnExplicit)) {
+                                  AllowObjCConversionOnExplicit,
+				  ConstexprParameter)) {
   case OR_Success:
   case OR_Deleted:
     ICS.setUserDefined();
@@ -1370,6 +1378,7 @@ TryUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
         ICS.Standard.setAllToTypes(ToType);
         ICS.Standard.CopyConstructor = Constructor;
         ICS.Standard.FoundCopyConstructor = Found;
+	ICS.Standard.ConstexprParameter = ConstexprParameter;
         if (ToCanon != FromCanon)
           ICS.Standard.Second = ICK_Derived_To_Base;
       }
@@ -1429,10 +1438,12 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
                       bool InOverloadResolution,
                       bool CStyle,
                       bool AllowObjCWritebackConversion,
-                      bool AllowObjCConversionOnExplicit) {
+                      bool AllowObjCConversionOnExplicit,
+		      bool ConstexprParameter = false) {
   ImplicitConversionSequence ICS;
   if (IsStandardConversion(S, From, ToType, InOverloadResolution,
-                           ICS.Standard, CStyle, AllowObjCWritebackConversion)){
+                           ICS.Standard, CStyle, AllowObjCWritebackConversion,
+			   ConstexprParameter)){
     ICS.setStandard();
     return ICS;
   }
@@ -1457,6 +1468,7 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     ICS.Standard.setAsIdentityConversion();
     ICS.Standard.setFromType(FromType);
     ICS.Standard.setAllToTypes(ToType);
+    ICS.Standard.ConstexprParameter = ConstexprParameter;
 
     // We don't actually check at this point whether there is a valid
     // copy/move constructor, since overloading just assumes that it
@@ -1474,7 +1486,8 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
   return TryUserDefinedConversion(S, From, ToType, SuppressUserConversions,
                                   AllowExplicit, InOverloadResolution, CStyle,
                                   AllowObjCWritebackConversion,
-                                  AllowObjCConversionOnExplicit);
+                                  AllowObjCConversionOnExplicit,
+				  ConstexprParameter);
 }
 
 ImplicitConversionSequence
@@ -1688,7 +1701,8 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
                                  bool InOverloadResolution,
                                  StandardConversionSequence &SCS,
                                  bool CStyle,
-                                 bool AllowObjCWritebackConversion) {
+                                 bool AllowObjCWritebackConversion,
+				 bool ConstexprParameter) {
   QualType FromType = From->getType();
 
   // Standard conversions (C++ [conv])
@@ -1696,6 +1710,7 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
   SCS.IncompatibleObjC = false;
   SCS.setFromType(FromType);
   SCS.CopyConstructor = nullptr;
+  SCS.ConstexprParameter = ConstexprParameter;
 
   // There are no standard conversions for class types in C++, so
   // abort early. When overloading in C, however, we do permit them.
@@ -3425,7 +3440,8 @@ IsUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
                         UserDefinedConversionSequence &User,
                         OverloadCandidateSet &CandidateSet,
                         AllowedExplicit AllowExplicit,
-                        bool AllowObjCConversionOnExplicit) {
+                        bool AllowObjCConversionOnExplicit,
+			bool ConstexprParameter) {
   assert(AllowExplicit != AllowedExplicit::None ||
          !AllowObjCConversionOnExplicit);
   CandidateSet.clear(OverloadCandidateSet::CSK_InitByUserDefinedConversion);
@@ -3590,6 +3606,7 @@ IsUserDefinedConversion(Sema &S, Expr *From, QualType ToType,
       User.After.setAsIdentityConversion();
       User.After.setFromType(ThisType->castAs<PointerType>()->getPointeeType());
       User.After.setAllToTypes(ToType);
+      User.After.ConstexprParameter = ConstexprParameter;
       return Result;
     }
     if (CXXConversionDecl *Conversion
@@ -3637,7 +3654,7 @@ Sema::DiagnoseMultipleUserDefinedConversion(Expr *From, QualType ToType) {
                                     OverloadCandidateSet::CSK_Normal);
   OverloadingResult OvResult =
     IsUserDefinedConversion(*this, From, ToType, ICS.UserDefined,
-                            CandidateSet, AllowedExplicit::None, false);
+                            CandidateSet, AllowedExplicit::None, false, false);
 
   if (!(OvResult == OR_Ambiguous ||
         (OvResult == OR_No_Viable_Function && !CandidateSet.empty())))
@@ -4212,6 +4229,12 @@ CompareStandardConversionSequences(Sema &S, SourceLocation Loc,
                  ? ImplicitConversionSequence::Better
                  : ImplicitConversionSequence::Worse;
   }
+  
+  /// A conversion sequence for a constexpr parameter is better
+  /// than a conversion for a runtime parameter
+  if (SCS1.ConstexprParameter && !SCS2.ConstexprParameter) {
+    return ImplicitConversionSequence::Better;
+  }
 
   return ImplicitConversionSequence::Indistinguishable;
 }
@@ -4617,7 +4640,8 @@ static bool
 FindConversionForRefInit(Sema &S, ImplicitConversionSequence &ICS,
                          QualType DeclType, SourceLocation DeclLoc,
                          Expr *Init, QualType T2, bool AllowRvalues,
-                         bool AllowExplicit) {
+                         bool AllowExplicit,
+			 bool ConstexprParameter) {
   assert(T2->isRecordType() && "Can only find conversions of record types.");
   auto *T2RecordDecl = cast<CXXRecordDecl>(T2->castAs<RecordType>()->getDecl());
 
@@ -4734,7 +4758,8 @@ static ImplicitConversionSequence
 TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
                  SourceLocation DeclLoc,
                  bool SuppressUserConversions,
-                 bool AllowExplicit) {
+                 bool AllowExplicit,
+		 bool ConstexprParameter) {
   assert(DeclType->isReferenceType() && "Reference init needs a reference");
 
   // Most paths end in a failed conversion.
@@ -4793,6 +4818,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
         (RefConv & Sema::ReferenceConversions::ObjCLifetime) != 0;
     ICS.Standard.CopyConstructor = nullptr;
     ICS.Standard.DeprecatedStringLiteralToCharPtr = false;
+    ICS.Standard.ConstexprParameter = ConstexprParameter;
   };
 
   // C++0x [dcl.init.ref]p5:
@@ -4834,7 +4860,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
         RefRelationship == Sema::Ref_Incompatible) {
       if (FindConversionForRefInit(S, ICS, DeclType, DeclLoc,
                                    Init, T2, /*AllowRvalues=*/false,
-                                   AllowExplicit))
+                                   AllowExplicit, ConstexprParameter))
         return ICS;
     }
   }
@@ -4881,7 +4907,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
       T2->isRecordType() && S.isCompleteType(DeclLoc, T2) &&
       FindConversionForRefInit(S, ICS, DeclType, DeclLoc,
                                Init, T2, /*AllowRvalues=*/true,
-                               AllowExplicit)) {
+                               AllowExplicit, ConstexprParameter)) {
     // In the second case, if the reference is an rvalue reference
     // and the second standard conversion sequence of the
     // user-defined conversion sequence includes an lvalue-to-rvalue
@@ -4957,7 +4983,8 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
                               /*InOverloadResolution=*/false,
                               /*CStyle=*/false,
                               /*AllowObjCWritebackConversion=*/false,
-                              /*AllowObjCConversionOnExplicit=*/false);
+                              /*AllowObjCConversionOnExplicit=*/false,
+			      ConstexprParameter);
 
   // Of course, that's still a reference binding.
   if (ICS.isStandard()) {
@@ -4967,6 +4994,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
     ICS.Standard.BindsToRvalue = true;
     ICS.Standard.BindsImplicitObjectArgumentWithoutRefQualifier = false;
     ICS.Standard.ObjCLifetimeConversionBinding = false;
+    ICS.Standard.ConstexprParameter = ConstexprParameter;
   } else if (ICS.isUserDefined()) {
     const ReferenceType *LValRefType =
         ICS.UserDefined.ConversionFunction->getReturnType()
@@ -4989,6 +5017,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
     ICS.UserDefined.After.BindsToRvalue = !LValRefType;
     ICS.UserDefined.After.BindsImplicitObjectArgumentWithoutRefQualifier = false;
     ICS.UserDefined.After.ObjCLifetimeConversionBinding = false;
+    ICS.UserDefined.After.ConstexprParameter = ConstexprParameter;
   }
 
   return ICS;
@@ -4999,7 +5028,8 @@ TryCopyInitialization(Sema &S, Expr *From, QualType ToType,
                       bool SuppressUserConversions,
                       bool InOverloadResolution,
                       bool AllowObjCWritebackConversion,
-                      bool AllowExplicit = false);
+                      bool AllowExplicit = false,
+		      bool ConstexprParameter = false);
 
 /// TryListConversion - Try to copy-initialize a value of type ToType from the
 /// initializer list From.
@@ -5007,7 +5037,8 @@ static ImplicitConversionSequence
 TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
                   bool SuppressUserConversions,
                   bool InOverloadResolution,
-                  bool AllowObjCWritebackConversion) {
+                  bool AllowObjCWritebackConversion,
+		  bool ConstexprParameter = false) {
   // C++11 [over.ics.list]p1:
   //   When an argument is an initializer list, it is not an expression and
   //   special rules apply for converting it to a parameter type.
@@ -5044,7 +5075,9 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
         return TryCopyInitialization(S, From->getInit(0), ToType,
                                      SuppressUserConversions,
                                      InOverloadResolution,
-                                     AllowObjCWritebackConversion);
+                                     AllowObjCWritebackConversion,
+				     /*AllowExplicit*/false,
+				     ConstexprParameter);
     }
 
     if (AT && S.IsStringInit(From->getInit(0), AT)) {
@@ -5056,6 +5089,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
         Result.Standard.setAsIdentityConversion();
         Result.Standard.setFromType(ToType);
         Result.Standard.setAllToTypes(ToType);
+	Result.Standard.ConstexprParameter = ConstexprParameter;
         return Result;
       }
     }
@@ -5098,7 +5132,8 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
           EmptyList.setType(S.Context.VoidTy);
           DfltElt = TryListConversion(
               S, &EmptyList, InitTy, SuppressUserConversions,
-              InOverloadResolution, AllowObjCWritebackConversion);
+              InOverloadResolution, AllowObjCWritebackConversion,
+	      ConstexprParameter);
           if (DfltElt.isBad()) {
             // No {} init, fatally bad
             Result.setBad(BadConversionSequence::too_few_initializers, From,
@@ -5131,7 +5166,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       Expr *Init = From->getInit(i);
       ImplicitConversionSequence ICS = TryCopyInitialization(
           S, Init, InitTy, SuppressUserConversions, InOverloadResolution,
-          AllowObjCWritebackConversion);
+          AllowObjCWritebackConversion, /*AllowExplicit*/false, ConstexprParameter);
 
       // Keep the worse conversion seen so far.
       // FIXME: Sequences are not totally ordered, so 'worse' can be
@@ -5173,7 +5208,8 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
                                     AllowedExplicit::None,
                                     InOverloadResolution, /*CStyle=*/false,
                                     AllowObjCWritebackConversion,
-                                    /*AllowObjCConversionOnExplicit=*/false);
+                                    /*AllowObjCConversionOnExplicit=*/false,
+				    ConstexprParameter);
   }
 
   // C++14 [over.ics.list]p5:
@@ -5199,6 +5235,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       Result.UserDefined.After.setAsIdentityConversion();
       Result.UserDefined.After.setFromType(ToType);
       Result.UserDefined.After.setAllToTypes(ToType);
+      Result.UserDefined.After.ConstexprParameter = ConstexprParameter;
       Result.UserDefined.ConversionFunction = nullptr;
     }
     return Result;
@@ -5238,7 +5275,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       if (RefRelationship >= Sema::Ref_Related) {
         return TryReferenceInit(S, Init, ToType, /*FIXME*/ From->getBeginLoc(),
                                 SuppressUserConversions,
-                                /*AllowExplicit=*/false);
+                                /*AllowExplicit=*/false, ConstexprParameter);
       }
     }
 
@@ -5246,7 +5283,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
     // initializer list.
     Result = TryListConversion(S, From, T1, SuppressUserConversions,
                                InOverloadResolution,
-                               AllowObjCWritebackConversion);
+                               AllowObjCWritebackConversion, ConstexprParameter);
     if (Result.isFailure())
       return Result;
     assert(!Result.isEllipsis() &&
@@ -5263,6 +5300,7 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       SCS.BindsToFunctionLvalue = false;
       SCS.BindsImplicitObjectArgumentWithoutRefQualifier = false;
       SCS.ObjCLifetimeConversionBinding = false;
+      SCS.ConstexprParameter = ConstexprParameter;
     } else
       Result.setBad(BadConversionSequence::lvalue_ref_to_rvalue,
                     From, ToType);
@@ -5281,7 +5319,9 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       Result = TryCopyInitialization(S, From->getInit(0), ToType,
                                      SuppressUserConversions,
                                      InOverloadResolution,
-                                     AllowObjCWritebackConversion);
+                                     AllowObjCWritebackConversion,
+				     /*AllowExplicit*/false,
+				     ConstexprParameter);
     //    - if the initializer list has no elements, the implicit conversion
     //      sequence is the identity conversion.
     else if (NumInits == 0) {
@@ -5310,15 +5350,18 @@ TryCopyInitialization(Sema &S, Expr *From, QualType ToType,
                       bool SuppressUserConversions,
                       bool InOverloadResolution,
                       bool AllowObjCWritebackConversion,
-                      bool AllowExplicit) {
+                      bool AllowExplicit,
+		      bool ConstexprParameter) {
   if (InitListExpr *FromInitList = dyn_cast<InitListExpr>(From))
     return TryListConversion(S, FromInitList, ToType, SuppressUserConversions,
-                             InOverloadResolution,AllowObjCWritebackConversion);
+                             InOverloadResolution,AllowObjCWritebackConversion,
+			     ConstexprParameter);
 
   if (ToType->isReferenceType())
     return TryReferenceInit(S, From, ToType,
                             /*FIXME:*/ From->getBeginLoc(),
-                            SuppressUserConversions, AllowExplicit);
+                            SuppressUserConversions, AllowExplicit,
+			    ConstexprParameter);
 
   return TryImplicitConversion(S, From, ToType,
                                SuppressUserConversions,
@@ -5326,7 +5369,8 @@ TryCopyInitialization(Sema &S, Expr *From, QualType ToType,
                                InOverloadResolution,
                                /*CStyle=*/false,
                                AllowObjCWritebackConversion,
-                               /*AllowObjCConversionOnExplicit=*/false);
+                               /*AllowObjCConversionOnExplicit=*/false,
+			       ConstexprParameter);
 }
 
 static bool TryCopyInitialization(const CanQualType FromQTy,
@@ -6534,12 +6578,14 @@ void Sema::AddOverloadCandidate(
       // (13.3.3.1) that converts that argument to the corresponding
       // parameter of F.
       QualType ParamType;
+      bool ConstexprParameter = false;
       if(ConstexprParamIdx < ConstexprParams.size() && ConstexprParams[ConstexprParamIdx].Position == ArgIdx) {
 	auto FunctionTemplate = Function->getPrimaryTemplate();
 	unsigned nttpPosition = getNTTPPosition(FunctionTemplate, ConstexprParams[ConstexprParamIdx].Param);
 	auto templateArg = Function->getTemplateSpecializationArgs()->data()[nttpPosition];
 	ParamType = templateArg.getNonTypeTemplateArgumentType();
 	++ConstexprParamIdx;
+	ConstexprParameter = true;
       } else {
 	ParamType = Proto->getParamType(NonConstexprParamIdx);
 	++NonConstexprParamIdx;
@@ -6548,7 +6594,8 @@ void Sema::AddOverloadCandidate(
           *this, Args[ArgIdx], ParamType, SuppressUserConversions,
           /*InOverloadResolution=*/true,
           /*AllowObjCWritebackConversion=*/
-          getLangOpts().ObjCAutoRefCount, AllowExplicitConversions);
+          getLangOpts().ObjCAutoRefCount, AllowExplicitConversions,
+	  ConstexprParameter);
       if (Candidate.Conversions[ConvIdx].isBad()) {
         Candidate.Viable = false;
         Candidate.FailureKind = ovl_fail_bad_conversion;
@@ -7199,9 +7246,10 @@ void Sema::AddTemplateOverloadCandidate(
     OverloadCandidateSet &CandidateSet, bool SuppressUserConversions,
     bool PartialOverloading, bool AllowExplicit, ADLCallKind IsADLCandidate,
     OverloadCandidateParamOrder PO) {
+  
   if (!CandidateSet.isNewCandidate(FunctionTemplate, PO))
     return;
-
+  
   SmallVector<Expr*> Args;
   SmallVector<Expr*> ConstexprArgs;
   if(!splitConstexprParamArgs(FunctionTemplate, AllArgs, Args, ConstexprArgs)) {
