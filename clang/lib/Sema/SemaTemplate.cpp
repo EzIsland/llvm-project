@@ -1506,7 +1506,7 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
     //   variable or variable template or the declaration of a function or
     //   function template.
 
-    if (DS.hasConstexprSpecifier())
+    if (!isValidConstexprParameterSpecifier(DS))
       EmitDiag(DS.getConstexprSpecLoc());
 
     // [dcl.fct.spec]p1:
@@ -1530,8 +1530,6 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
       << QualType(TInfo->getType()->getContainedAutoType(), 0);
   }
 
-  assert(S->isTemplateParamScope() &&
-         "Non-type template parameter not in template parameter scope!");
   bool Invalid = false;
 
   QualType T = CheckNonTypeTemplateParameterType(TInfo, D.getIdentifierLoc());
@@ -1562,7 +1560,8 @@ NamedDecl *Sema::ActOnNonTypeTemplateParameter(Scope *S, Declarator &D,
     if (auto *LSI = getEnclosingLambda())
       LSI->LocalPacks.push_back(Param);
 
-  if (ParamName) {
+  bool isConstexprParameter = getLangOpts().ConstexprFunctionParameters && D.getDeclSpec().hasConstexprSpecifier();
+  if (ParamName && !isConstexprParameter) {
     maybeDiagnoseTemplateParameterShadow(*this, S, D.getIdentifierLoc(),
                                          ParamName);
 

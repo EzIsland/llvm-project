@@ -2698,6 +2698,9 @@ def fproc_stat_report : Joined<["-"], "fproc-stat-report">, Group<f_Group>,
   HelpText<"Print subprocess statistics">;
 def fproc_stat_report_EQ : Joined<["-"], "fproc-stat-report=">, Group<f_Group>,
   HelpText<"Save subprocess statistics to the given file">;
+def fp1045 : Flag<["-"], "fp1045">, Group<f_Group>, Flags<[CC1Option, CoreOption]>,
+  HelpText<"Enable constexpr function parameters, p1045">,
+  MarshallingInfoFlag<LangOpts<"ConstexprFunctionParameters">>;
 def ftlsmodel_EQ : Joined<["-"], "ftls-model=">, Group<f_Group>, Flags<[CC1Option]>,
   Values<"global-dynamic,local-dynamic,initial-exec,local-exec">,
   NormalizedValuesScope<"CodeGenOptions">,

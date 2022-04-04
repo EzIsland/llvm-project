@@ -13755,7 +13755,7 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
   if (DS.isInlineSpecified())
     Diag(DS.getInlineSpecLoc(), diag::err_inline_non_function)
         << getLangOpts().CPlusPlus17;
-  if (DS.hasConstexprSpecifier())
+  if (!isValidConstexprParameterSpecifier(DS))
     Diag(DS.getConstexprSpecLoc(), diag::err_invalid_constexpr)
         << 0 << static_cast<int>(D.getDeclSpec().getConstexprSpecifier());
 
@@ -13790,13 +13790,32 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
       }
     }
   }
+  
+  bool isConstexprParameter = DS.getConstexprSpecifier() == ConstexprSpecKind::Constexpr
+    || DS.getConstexprSpecifier() == ConstexprSpecKind::Consteval;
+  ConstexprParmVarDecl::ConstexprCategory ConstexprCategory = ConstexprParmVarDecl::CC_CONSTEXPR;
+  NonTypeTemplateParmDecl* ConstexprParameter = nullptr;
+  if(isConstexprParameter && getLangOpts().ConstexprFunctionParameters) {
+    InventedTemplateParameterInfo* inventedParameterInfo = &InventedParameterInfos.back();
+    unsigned depth = inventedParameterInfo->AutoTemplateParameterDepth;
+    unsigned position = inventedParameterInfo->TemplateParams.size();
+    auto oldContext = D.getContext();
+    D.setContext(DeclaratorContext::TemplateParam);
+    ConstexprParameter = llvm::dyn_cast<NonTypeTemplateParmDecl>(ActOnNonTypeTemplateParameter(getCurScope(), D, depth, position, SourceLocation(), nullptr));
+    D.setContext(oldContext);
+    ConstexprParameter->setImplicit(true);
+    inventedParameterInfo->TemplateParams.push_back(ConstexprParameter);
+    ConstexprCategory = DS.getConstexprSpecifier() == ConstexprSpecKind::Consteval ?
+      ConstexprParmVarDecl::ConstexprCategory::CC_CONSTEXPR : ConstexprParmVarDecl::ConstexprCategory::CC_MAYBE_CONSTEXPR;
+  }
 
   // Temporarily put parameter variables in the translation unit, not
   // the enclosing context.  This prevents them from accidentally
   // looking like class members in C++.
   ParmVarDecl *New =
       CheckParameter(Context.getTranslationUnitDecl(), D.getBeginLoc(),
-                     D.getIdentifierLoc(), II, parmDeclType, TInfo, SC);
+                     D.getIdentifierLoc(), II, parmDeclType, TInfo, SC,
+		     ConstexprCategory, ConstexprParameter);
 
   if (D.isInvalidType())
     New->setInvalidDecl();
@@ -13887,7 +13906,9 @@ void Sema::DiagnoseSizeOfParametersAndReturnValue(
 ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                                   SourceLocation NameLoc, IdentifierInfo *Name,
                                   QualType T, TypeSourceInfo *TSInfo,
-                                  StorageClass SC) {
+                                  StorageClass SC,
+				  ConstexprParmVarDecl::ConstexprCategory ConstexprCategory,
+				  NonTypeTemplateParmDecl* ConstexprParameter) {
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -13914,10 +13935,17 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
     }
     T = Context.getLifetimeQualifiedType(T, lifetime);
   }
-
-  ParmVarDecl *New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
-                                         Context.getAdjustedParameterType(T),
-                                         TSInfo, SC, nullptr);
+  
+  ParmVarDecl *New = nullptr;
+  if(ConstexprParameter) {
+    New = ConstexprParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
+				       Context.getAdjustedParameterType(T),
+				       TSInfo, SC, nullptr, ConstexprCategory, ConstexprParameter);
+  } else {
+    New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
+			      Context.getAdjustedParameterType(T),
+			      TSInfo, SC, nullptr);
+  }
 
   // Make a note if we created a new pack in the scope of a lambda, so that
   // we know that references to that pack must also be expanded within the
@@ -13971,6 +13999,15 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
   }
 
   return New;
+}
+
+bool Sema::isValidConstexprParameterSpecifier(const DeclSpec& DS) {
+  if(!DS.hasConstexprSpecifier()) {
+    return true;
+  }
+  return getLangOpts().ConstexprFunctionParameters &&
+    (DS.getConstexprSpecifier() == ConstexprSpecKind::Constexpr
+     || DS.getConstexprSpecifier() == ConstexprSpecKind::Consteval);
 }
 
 void Sema::ActOnFinishKNRParamDeclarations(Scope *S, Declarator &D,

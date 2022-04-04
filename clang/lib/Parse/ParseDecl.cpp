@@ -6993,7 +6993,10 @@ void Parser::ParseParameterDeclarationClause(
       // arguments in all dialects; the semantic analysis in
       // ActOnParamDefaultArgument will reject the default argument in
       // C.
-      if (Tok.is(tok::equal)) {
+
+      if(Tok.is(tok::equal) && llvm::isa<ConstexprParmVarDecl>(Param)) {
+	Diag(Tok, diag::err_constexpr_param_default_arg);
+      } else if (Tok.is(tok::equal)) {
         SourceLocation EqualLoc = Tok.getLocation();
 
         // Parse the default argument

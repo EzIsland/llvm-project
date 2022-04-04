@@ -1934,6 +1934,7 @@ public:
   }
 
   DeclaratorContext getContext() const { return Context; }
+  void setContext(DeclaratorContext Value) { Context = Value; }
 
   bool isPrototypeContext() const {
     return (Context == DeclaratorContext::Prototype ||

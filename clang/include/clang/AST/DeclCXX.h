@@ -4105,6 +4105,10 @@ public:
     void setConstexprParameter(NonTypeTemplateParmDecl*);
     void setCategory(ConstexprCategory);
 
+    // Implement isa/cast/dyncast/etc.
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K == ConstexprParmVar; }
+
   protected:
     ///
     /// Initializes this ConstexprParmVarDecl with the arguments for ParmVarDecl

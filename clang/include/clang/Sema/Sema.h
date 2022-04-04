@@ -2762,7 +2762,12 @@ public:
   ParmVarDecl *CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                               SourceLocation NameLoc, IdentifierInfo *Name,
                               QualType T, TypeSourceInfo *TSInfo,
-                              StorageClass SC);
+                              StorageClass SC,
+			      ConstexprParmVarDecl::ConstexprCategory = ConstexprParmVarDecl::ConstexprCategory::CC_CONSTEXPR,
+			      NonTypeTemplateParmDecl* ConstexprParameter = nullptr);
+
+  bool isValidConstexprParameterSpecifier(const DeclSpec& DS);
+  
   void ActOnParamDefaultArgument(Decl *param,
                                  SourceLocation EqualLoc,
                                  Expr *defarg);

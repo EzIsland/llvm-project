@@ -496,6 +496,10 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
   if (isa<NonTypeTemplateParmDecl>(Decl))
     return Deps | ExprDependence::ValueInstantiation;
 
+  if (auto* constexprParm = dyn_cast<ConstexprParmVarDecl>(Decl)) {
+    return Deps | ExprDependence::TypeValueInstantiation;
+  }
+
   //   - it names a potentially-constant variable that is initialized with an
   //     expression that is value-dependent
   if (const auto *Var = dyn_cast<VarDecl>(Decl)) {
