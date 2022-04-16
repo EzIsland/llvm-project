@@ -13807,6 +13807,14 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
     inventedParameterInfo->TemplateParams.push_back(ConstexprParameter);
     ConstexprCategory = DS.getConstexprSpecifier() == ConstexprSpecKind::Consteval ?
       ConstexprParmVarDecl::ConstexprCategory::CC_CONSTEXPR : ConstexprParmVarDecl::ConstexprCategory::CC_MAYBE_CONSTEXPR;
+    switch(ConstexprCategory) {
+    case ConstexprParmVarDecl::ConstexprCategory::CC_MAYBE_CONSTEXPR:
+      ConstexprParameter->setConstexprParamKind(NonTypeTemplateParmDecl::CPK_CONSTEXPR);
+      break;
+    case ConstexprParmVarDecl::ConstexprCategory::CC_CONSTEXPR:
+      ConstexprParameter->setConstexprParamKind(NonTypeTemplateParmDecl::CPK_CONSTEVAL);
+      break;
+    }
   }
 
   // Temporarily put parameter variables in the translation unit, not

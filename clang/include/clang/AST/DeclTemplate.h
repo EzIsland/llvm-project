@@ -1408,6 +1408,12 @@ class NonTypeTemplateParmDecl final
 
   /// The number of types in an expanded parameter pack.
   unsigned NumExpandedTypes = 0;
+public:
+  enum ConstexprParamKind {
+			   CPK_NONE, CPK_CONSTEXPR, CPK_CONSTEVAL
+  };
+private:
+  ConstexprParamKind CPK;
 
   size_t numTrailingObjects(
       OverloadToken<std::pair<QualType, TypeSourceInfo *>>) const {
@@ -1417,28 +1423,31 @@ class NonTypeTemplateParmDecl final
   NonTypeTemplateParmDecl(DeclContext *DC, SourceLocation StartLoc,
                           SourceLocation IdLoc, unsigned D, unsigned P,
                           IdentifierInfo *Id, QualType T,
-                          bool ParameterPack, TypeSourceInfo *TInfo)
+                          bool ParameterPack, TypeSourceInfo *TInfo,
+			  ConstexprParamKind cpk)
       : DeclaratorDecl(NonTypeTemplateParm, DC, IdLoc, Id, T, TInfo, StartLoc),
-        TemplateParmPosition(D, P), ParameterPack(ParameterPack) {}
+        TemplateParmPosition(D, P), ParameterPack(ParameterPack),
+	CPK(cpk) {}
 
   NonTypeTemplateParmDecl(DeclContext *DC, SourceLocation StartLoc,
                           SourceLocation IdLoc, unsigned D, unsigned P,
                           IdentifierInfo *Id, QualType T,
                           TypeSourceInfo *TInfo,
                           ArrayRef<QualType> ExpandedTypes,
-                          ArrayRef<TypeSourceInfo *> ExpandedTInfos);
+                          ArrayRef<TypeSourceInfo *> ExpandedTInfos,
+			  ConstexprParamKind cpk);
 
 public:
   static NonTypeTemplateParmDecl *
   Create(const ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
          SourceLocation IdLoc, unsigned D, unsigned P, IdentifierInfo *Id,
-         QualType T, bool ParameterPack, TypeSourceInfo *TInfo);
+         QualType T, bool ParameterPack, TypeSourceInfo *TInfo, ConstexprParamKind cpk = CPK_NONE);
 
   static NonTypeTemplateParmDecl *
   Create(const ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
          SourceLocation IdLoc, unsigned D, unsigned P, IdentifierInfo *Id,
          QualType T, TypeSourceInfo *TInfo, ArrayRef<QualType> ExpandedTypes,
-         ArrayRef<TypeSourceInfo *> ExpandedTInfos);
+         ArrayRef<TypeSourceInfo *> ExpandedTInfos, ConstexprParamKind cpk = CPK_NONE);
 
   static NonTypeTemplateParmDecl *CreateDeserialized(ASTContext &C,
                                                      unsigned ID,
@@ -1457,6 +1466,9 @@ public:
   SourceRange getSourceRange() const override LLVM_READONLY;
 
   const DefArgStorage &getDefaultArgStorage() const { return DefaultArgument; }
+
+  ConstexprParamKind getConstexprParamKind() const { return CPK; }
+  ConstexprParamKind setConstexprParamKind(ConstexprParamKind cpk) { return CPK = cpk; }
 
   /// Determine whether this template parameter has a default
   /// argument.

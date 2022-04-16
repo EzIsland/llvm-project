@@ -706,10 +706,12 @@ void TemplateTypeParmDecl::setTypeConstraint(NestedNameSpecifierLoc NNS,
 NonTypeTemplateParmDecl::NonTypeTemplateParmDecl(
     DeclContext *DC, SourceLocation StartLoc, SourceLocation IdLoc, unsigned D,
     unsigned P, IdentifierInfo *Id, QualType T, TypeSourceInfo *TInfo,
-    ArrayRef<QualType> ExpandedTypes, ArrayRef<TypeSourceInfo *> ExpandedTInfos)
+    ArrayRef<QualType> ExpandedTypes, ArrayRef<TypeSourceInfo *> ExpandedTInfos,
+    ConstexprParamKind cpk)
     : DeclaratorDecl(NonTypeTemplateParm, DC, IdLoc, Id, T, TInfo, StartLoc),
       TemplateParmPosition(D, P), ParameterPack(true),
-      ExpandedParameterPack(true), NumExpandedTypes(ExpandedTypes.size()) {
+      ExpandedParameterPack(true), NumExpandedTypes(ExpandedTypes.size()),
+      CPK(cpk) {
   if (!ExpandedTypes.empty() && !ExpandedTInfos.empty()) {
     auto TypesAndInfos =
         getTrailingObjects<std::pair<QualType, TypeSourceInfo *>>();
@@ -725,7 +727,8 @@ NonTypeTemplateParmDecl::Create(const ASTContext &C, DeclContext *DC,
                                 SourceLocation StartLoc, SourceLocation IdLoc,
                                 unsigned D, unsigned P, IdentifierInfo *Id,
                                 QualType T, bool ParameterPack,
-                                TypeSourceInfo *TInfo) {
+                                TypeSourceInfo *TInfo,
+				ConstexprParamKind cpk) {
   AutoType *AT =
       C.getLangOpts().CPlusPlus20 ? T->getContainedAutoType() : nullptr;
   return new (C, DC,
@@ -733,21 +736,22 @@ NonTypeTemplateParmDecl::Create(const ASTContext &C, DeclContext *DC,
                                     Expr *>(0,
                                             AT && AT->isConstrained() ? 1 : 0))
       NonTypeTemplateParmDecl(DC, StartLoc, IdLoc, D, P, Id, T, ParameterPack,
-                              TInfo);
+                              TInfo, cpk);
 }
 
 NonTypeTemplateParmDecl *NonTypeTemplateParmDecl::Create(
     const ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
     SourceLocation IdLoc, unsigned D, unsigned P, IdentifierInfo *Id,
     QualType T, TypeSourceInfo *TInfo, ArrayRef<QualType> ExpandedTypes,
-    ArrayRef<TypeSourceInfo *> ExpandedTInfos) {
+    ArrayRef<TypeSourceInfo *> ExpandedTInfos,
+    ConstexprParamKind cpk) {
   AutoType *AT = TInfo->getType()->getContainedAutoType();
   return new (C, DC,
               additionalSizeToAlloc<std::pair<QualType, TypeSourceInfo *>,
                                     Expr *>(
                   ExpandedTypes.size(), AT && AT->isConstrained() ? 1 : 0))
       NonTypeTemplateParmDecl(DC, StartLoc, IdLoc, D, P, Id, T, TInfo,
-                              ExpandedTypes, ExpandedTInfos);
+                              ExpandedTypes, ExpandedTInfos, cpk);
 }
 
 NonTypeTemplateParmDecl *
@@ -758,7 +762,7 @@ NonTypeTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID,
                                            Expr *>(0,
                                                    HasTypeConstraint ? 1 : 0))
           NonTypeTemplateParmDecl(nullptr, SourceLocation(), SourceLocation(),
-                                  0, 0, nullptr, QualType(), false, nullptr);
+                                  0, 0, nullptr, QualType(), false, nullptr, CPK_NONE);
 }
 
 NonTypeTemplateParmDecl *
@@ -771,7 +775,7 @@ NonTypeTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID,
                       NumExpandedTypes, HasTypeConstraint ? 1 : 0))
           NonTypeTemplateParmDecl(nullptr, SourceLocation(), SourceLocation(),
                                   0, 0, nullptr, QualType(), nullptr, None,
-                                  None);
+                                  None, CPK_NONE);
   NTTP->NumExpandedTypes = NumExpandedTypes;
   return NTTP;
 }

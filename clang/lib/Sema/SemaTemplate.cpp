@@ -6953,6 +6953,13 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
       return ArgResult;
     }
 
+    if(Value.getKind() == APValue::None &&
+       Param->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+      // Could not be reduced to a constant, OK for 'maybe constexpr' parameters.
+      Converted = TemplateArgument(ArgResult.get());
+      return ArgResult;
+    }
+
     // Convert the APValue to a TemplateArgument.
     switch (Value.getKind()) {
     case APValue::None:

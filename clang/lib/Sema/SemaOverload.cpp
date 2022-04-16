@@ -5821,6 +5821,12 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
       (RequireInt && !Eval.Val.isInt())) {
     // The expression can't be folded, so we can't keep it at this position in
     // the AST.
+    if(auto nttp  = dyn_cast<NonTypeTemplateParmDecl>(Dest)) {
+      if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+	Value = APValue();
+	return Result;
+      }
+    }
     Result = ExprError();
   } else {
     Value = Eval.Val;

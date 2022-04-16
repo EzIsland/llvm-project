@@ -4144,14 +4144,42 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     // C++ [demp.deduct.call]p1: (DR1391)
     //   Template argument deduction is done by comparing each function template
     //   parameter that contains template-parameters that participate in
-    //   template argument deduction ...
-    if (!hasDeducibleTemplateParameters(*this, FunctionTemplate, ParamType))
+    //   template argument deduction ...    
+    
+    if (!isa<ConstexprParmVarDecl>(Function->getParamDecl(ArgIdx))
+	  && !hasDeducibleTemplateParameters(*this, FunctionTemplate, ParamType))
       return Sema::TDK_Success;
 
     //   ... with the type of the corresponding argument
-    return DeduceTemplateArgumentsFromCallArgument(
+    auto result = DeduceTemplateArgumentsFromCallArgument(
         *this, TemplateParams, FirstInnerIndex, ParamType, Args[ArgIdx], Info, Deduced,
         OriginalCallArgs, /*Decomposed*/false, ArgIdx, /*TDF*/ 0);
+
+    if(result) {
+      return result;
+    }
+    
+    if(auto parmDecl = dyn_cast<ConstexprParmVarDecl>(Function->getParamDecl(ArgIdx))) {
+	TemplateArgumentLoc arg(TemplateArgument(Args[ArgIdx]), Args[ArgIdx]);
+	SmallVector<TemplateArgument, 4> Converted;
+	for(auto arg : Deduced) {
+	  Converted.push_back(arg);
+	}
+    	if(CheckTemplateArgument(parmDecl->getConstexprParameter(),
+				 arg,
+				 FunctionTemplate,
+				 FunctionTemplate->getLocation(),
+				 SourceLocation(),
+				 /*argument pack size*/0,
+				 Converted)) {
+	  return TDK_SubstitutionFailure;
+	} else {
+	  auto templateParmIndex = parmDecl->getConstexprParameter()->getIndex();
+	  Deduced[templateParmIndex] = Converted.back();
+	  return TDK_Success;
+	}
+    }
+    return result;
   };
 
   // Deduce template arguments from the function parameters.
