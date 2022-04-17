@@ -535,10 +535,13 @@ class Sema;
     };
 
     /// ConversionKind - The kind of implicit conversion sequence.
-    unsigned ConversionKind : 31;
+    unsigned ConversionKind : 30;
 
     // Whether the initializer list was of an incomplete array.
     unsigned InitializerListOfIncompleteArray : 1;
+
+    /// True if the target of this conversion sequence is a constexpr parameter.
+    unsigned ConstexprParameter : 1;
 
     /// When initializing an array or std::initializer_list from an
     /// initializer-list, this is the array or std::initializer_list type being
@@ -578,6 +581,7 @@ class Sema;
     ImplicitConversionSequence()
         : ConversionKind(Uninitialized),
           InitializerListOfIncompleteArray(false),
+	  ConstexprParameter(false),
           InitializerListContainerType() {
       Standard.setAsIdentityConversion();
     }
@@ -586,6 +590,7 @@ class Sema;
         : ConversionKind(Other.ConversionKind),
           InitializerListOfIncompleteArray(
               Other.InitializerListOfIncompleteArray),
+	  ConstexprParameter(Other.ConstexprParameter),
           InitializerListContainerType(Other.InitializerListContainerType) {
       switch (ConversionKind) {
       case Uninitialized: break;
@@ -698,6 +703,14 @@ class Sema;
       assert(hasInitializerListContainerType() &&
              "not initializer list container");
       return InitializerListContainerType;
+    }
+
+    void setConstexprParameter(bool Value) {
+      ConstexprParameter = Value;
+    }
+    
+    bool isConstexprParameter() const {
+      return ConstexprParameter;
     }
 
     /// Form an "implicit" conversion sequence from nullptr_t to bool, for a

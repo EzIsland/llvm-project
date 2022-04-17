@@ -4170,6 +4170,10 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
 	for(auto arg : Deduced) {
 	  Converted.push_back(arg);
 	}
+	// Allow errors in constexpr parameter checking trigger sfinae
+	SFINAETrap Trap(*this);
+	InstantiatingTemplate Inst(*this, Info.getLocation(), FunctionTemplate, Converted,
+				   CodeSynthesisContext::DeducedTemplateArgumentSubstitution, Info);
     	if(CheckTemplateArgument(parmDecl->getConstexprParameter(),
 				 arg,
 				 FunctionTemplate,

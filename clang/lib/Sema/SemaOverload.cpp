@@ -3882,6 +3882,15 @@ CompareImplicitConversionSequences(Sema &S, SourceLocation Loc,
                                           ICS2.UserDefined.ConversionFunction);
   }
 
+  // Constexpr parameters are a tie-breaker
+  if(Result == ImplicitConversionSequence::Indistinguishable) {
+    if(ICS1.isConstexprParameter() != ICS2.isConstexprParameter()) {
+      Result = ICS1.isConstexprParameter()
+	? ImplicitConversionSequence::Better
+	: ImplicitConversionSequence::Worse;
+    }
+  }
+
   return Result;
 }
 
@@ -6542,6 +6551,7 @@ void Sema::AddOverloadCandidate(
           /*InOverloadResolution=*/true,
           /*AllowObjCWritebackConversion=*/
           getLangOpts().ObjCAutoRefCount, AllowExplicitConversions);
+      Candidate.Conversions[ConvIdx].setConstexprParameter(!RuntimeArgs[ArgIdx]);
       if (Candidate.Conversions[ConvIdx].isBad()) {
         Candidate.Viable = false;
         Candidate.FailureKind = ovl_fail_bad_conversion;
@@ -7266,8 +7276,11 @@ bool Sema::CheckNonDependentConversions(
 
   for (unsigned I = 0, N = std::min(ParamTypes.size(), Args.size()); I != N;
        ++I) {
+    // constexpr/consteval parameters have special ICS semantics,
+    // defer until after template deduction completes
+    bool isConstexprParam = isa<ConstexprParmVarDecl>(FD->getParamDecl(I));
     QualType ParamType = ParamTypes[I];
-    if (!ParamType->isDependentType()) {
+    if (!ParamType->isDependentType() && !isConstexprParam) {
       unsigned ConvIdx = PO == OverloadCandidateParamOrder::Reversed
                              ? 0
                              : (ThisConversions + I);
