@@ -2729,6 +2729,15 @@ public:
   /// returns NULL.
   const TemplateArgumentList *getTemplateSpecializationArgs() const;
 
+  ///
+  /// Returns a vector indicating which of the parameters of the primary template
+  /// are runtime parameters. The returned vector has the same number of elements
+  /// as function parameters of the primary template. If this is not a template specialization
+  /// returns a vector of all 'true' values with size equal to the number of parameters
+  /// of this function.
+  ///
+  SmallVector<bool, 4> getRuntimeParameters() const;
+
   /// Retrieve the template argument list as written in the sources,
   /// if any.
   ///
@@ -4656,6 +4665,7 @@ static constexpr StringRef getOpenMPVariantManglingSeparatorStr() {
   return "$ompvariant";
 }
 
+bool isRuntimeParameter(ParmVarDecl* Param, const TemplateArgumentList& TemplateArgs);
 } // namespace clang
 
 #endif // LLVM_CLANG_AST_DECL_H

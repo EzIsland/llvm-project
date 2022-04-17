@@ -5708,8 +5708,10 @@ bool TreeTransform<Derived>::TransformFunctionTypeParams(
             OldParm, indexAdjustment, None, /*ExpectParameterPack=*/ false);
       }
 
-      if (!NewParm)
-        return true;
+      if (!NewParm) {
+	indexAdjustment--;
+        continue;
+      }
 
       if (ParamInfos)
         PInfos.set(OutParamTypes.size(), ParamInfos[i]);

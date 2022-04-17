@@ -1704,9 +1704,20 @@ ExprResult
 TemplateInstantiator::TransformDeclRefExpr(DeclRefExpr *E) {
   NamedDecl *D = E->getDecl();
 
+  
+  
   // Handle references to non-type template parameters and non-type template
   // parameter packs.
-  if (NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D)) {
+  NonTypeTemplateParmDecl *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D);
+  TemplateArgumentList arglist(TemplateArgumentList::OnStack, TemplateArgs.getInnermost());
+  if(!NTTP) {
+    if(auto constexprParmDecl = dyn_cast<ConstexprParmVarDecl>(D)) {
+      if(!isRuntimeParameter(constexprParmDecl, arglist)) {
+	NTTP = constexprParmDecl->getConstexprParameter();
+      }
+    }
+  }
+  if (NTTP) {
     if (NTTP->getDepth() < TemplateArgs.getNumLevels())
       return TransformTemplateParmRefExpr(E, NTTP);
 
@@ -1749,6 +1760,10 @@ TemplateInstantiator::TransformFunctionTypeParam(ParmVarDecl *OldParm,
                                                  int indexAdjustment,
                                                Optional<unsigned> NumExpansions,
                                                  bool ExpectParameterPack) {
+  TemplateArgumentList arglist(TemplateArgumentList::OnStack, TemplateArgs.getInnermost());
+  if(!isRuntimeParameter(OldParm, arglist)) {
+    return nullptr;
+  }
   auto NewParm =
       SemaRef.SubstParmVarDecl(OldParm, TemplateArgs, indexAdjustment,
                                NumExpansions, ExpectParameterPack);

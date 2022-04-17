@@ -3667,11 +3667,16 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
     //   In general, the deduction process attempts to find template argument
     //   values that will make the deduced A identical to A (after the type A
     //   is transformed as described above). [...]
+    auto RuntimeArgs = Specialization->getRuntimeParameters();
+    unsigned ParamIdxCounter = 0;
     llvm::SmallDenseMap<std::pair<unsigned, QualType>, QualType> DeducedATypes;
     for (unsigned I = 0, N = OriginalCallArgs->size(); I != N; ++I) {
+      if(!RuntimeArgs[I]) {
+	continue;
+      }
       OriginalCallArg OriginalArg = (*OriginalCallArgs)[I];
 
-      auto ParamIdx = OriginalArg.ArgIdx;
+      auto ParamIdx = ParamIdxCounter++;
       if (ParamIdx >= Specialization->getNumParams())
         // FIXME: This presumably means a pack ended up smaller than we
         // expected while deducing. Should this not result in deduction

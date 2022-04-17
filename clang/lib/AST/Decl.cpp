@@ -3834,6 +3834,21 @@ FunctionDecl::getTemplateSpecializationArgs() const {
   return nullptr;
 }
 
+SmallVector<bool, 4> FunctionDecl::getRuntimeParameters() const {
+  
+  if(auto primary = getPrimaryTemplate()) {
+    llvm::SmallVector<bool, 4> RuntimeArgs;
+    auto templatedDecl = primary->getTemplatedDecl();
+    auto templateArgs = getTemplateSpecializationArgs();
+    for(auto param : templatedDecl->parameters()) {
+      RuntimeArgs.push_back(isRuntimeParameter(param, *templateArgs));
+    }
+    return RuntimeArgs;
+  } else {
+    return llvm::SmallVector<bool, 4>(param_size(), true);
+  }
+}
+
 const ASTTemplateArgumentListInfo *
 FunctionDecl::getTemplateSpecializationArgsAsWritten() const {
   if (FunctionTemplateSpecializationInfo *Info

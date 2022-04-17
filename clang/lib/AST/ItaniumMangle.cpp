@@ -4138,7 +4138,13 @@ void CXXNameMangler::mangleExpression(const Expr *E, unsigned Arity,
       mangle(D);
       Out << 'E';
       break;
-
+      
+    case Decl::ConstexprParmVar: {
+      NotPrimaryExpr();
+      const NonTypeTemplateParmDecl *nttp = cast<ConstexprParmVarDecl>(D)->getConstexprParameter();
+      mangleTemplateParameter(nttp->getDepth(), nttp->getIndex());
+      break;
+    }
     case Decl::ParmVar:
       NotPrimaryExpr();
       mangleFunctionParam(cast<ParmVarDecl>(D));

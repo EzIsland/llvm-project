@@ -4237,6 +4237,25 @@ TemplateDeclInstantiator::InstantiateVarTemplatePartialSpecialization(
   return InstPartialSpec;
 }
 
+namespace clang {
+bool isRuntimeParameter(ParmVarDecl* Param, const TemplateArgumentList& TemplateArgs) {
+  if(auto constexprParmVar = dyn_cast<ConstexprParmVarDecl>(Param)) {
+    if(auto nttp = constexprParmVar->getConstexprParameter()) {
+      if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEVAL) {
+	return false;
+      }
+      if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+	TemplateArgument arg = TemplateArgs[nttp->getIndex()];
+	if(arg.getKind() != TemplateArgument::ArgKind::Expression) {
+	  return false;
+	}
+      }
+    }
+  }
+  return true;
+}
+}
+
 TypeSourceInfo*
 TemplateDeclInstantiator::SubstFunctionType(FunctionDecl *D,
                               SmallVectorImpl<ParmVarDecl *> &Params) {
@@ -4272,6 +4291,10 @@ TemplateDeclInstantiator::SubstFunctionType(FunctionDecl *D,
         if (!OldParam)
           return nullptr;
 
+	TemplateArgumentList arglist(TemplateArgumentList::OnStack, TemplateArgs.getInnermost());
+	if(!isRuntimeParameter(OldParam, arglist)) {
+	  continue;
+	}
         LocalInstantiationScope *Scope = SemaRef.CurrentInstantiationScope;
 
         Optional<unsigned> NumArgumentsInExpansion;
@@ -4346,8 +4369,12 @@ static bool addInstantiatedParametersToScope(Sema &S, FunctionDecl *Function,
                                              const FunctionDecl *PatternDecl,
                                              LocalInstantiationScope &Scope,
                            const MultiLevelTemplateArgumentList &TemplateArgs) {
+  auto RuntimeArgs = Function->getRuntimeParameters();
   unsigned FParamIdx = 0;
   for (unsigned I = 0, N = PatternDecl->getNumParams(); I != N; ++I) {
+    if(!RuntimeArgs[I]) {
+      continue;
+    }
     const ParmVarDecl *PatternParam = PatternDecl->getParamDecl(I);
     if (!PatternParam->isParameterPack()) {
       // Simple case: not a parameter pack.

@@ -6668,12 +6668,22 @@ ExprResult Sema::ActOnConvertVectorExpr(Expr *E, ParsedType ParsedDestTy,
 /// \param NDecl the declaration being called, if available
 ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
                                        SourceLocation LParenLoc,
-                                       ArrayRef<Expr *> Args,
+                                       ArrayRef<Expr *> AllArgs,
                                        SourceLocation RParenLoc, Expr *Config,
                                        bool IsExecConfig, ADLCallKind UsesADL) {
+
+  
   FunctionDecl *FDecl = dyn_cast_or_null<FunctionDecl>(NDecl);
   unsigned BuiltinID = (FDecl ? FDecl->getBuiltinID() : 0);
 
+  auto RuntimeArgs = FDecl->getRuntimeParameters();
+  SmallVector<Expr*, 4> ArgsStorage;
+  for(unsigned idx = 0; idx != AllArgs.size(); ++idx) {
+    if(RuntimeArgs[idx]) {
+      ArgsStorage.push_back(AllArgs[idx]);
+    }
+  }
+  ArrayRef<Expr*> Args = ArgsStorage;
   // Functions with 'interrupt' attribute cannot be called directly.
   if (FDecl && FDecl->hasAttr<AnyX86InterruptAttr>()) {
     Diag(Fn->getExprLoc(), diag::err_anyx86_interrupt_called);

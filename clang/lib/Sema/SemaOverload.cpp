@@ -6458,10 +6458,19 @@ void Sema::AddOverloadCandidate(
 
   unsigned NumParams = Proto->getNumParams();
 
+  unsigned NumConstexprArgs = 0;
+  auto RuntimeArgs = Function->getRuntimeParameters();
+  if(!RuntimeArgs.empty()) {
+    for(auto runtimeArg : RuntimeArgs) {
+      NumConstexprArgs += !runtimeArg;
+    }
+  }
+  unsigned NumRuntimeArgs = Args.size() - NumConstexprArgs;
+
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
   // list (8.3.5).
-  if (TooManyArguments(NumParams, Args.size(), PartialOverloading) &&
+  if (TooManyArguments(NumParams, NumRuntimeArgs, PartialOverloading) &&
       !Proto->isVariadic()) {
     Candidate.Viable = false;
     Candidate.FailureKind = ovl_fail_too_many_arguments;
@@ -6506,18 +6515,28 @@ void Sema::AddOverloadCandidate(
 
   // Determine the implicit conversion sequences for each of the
   // arguments.
+  unsigned ParamIdx = 0;
   for (unsigned ArgIdx = 0; ArgIdx < Args.size(); ++ArgIdx) {
     unsigned ConvIdx =
         PO == OverloadCandidateParamOrder::Reversed ? 1 - ArgIdx : ArgIdx;
     if (Candidate.Conversions[ConvIdx].isInitialized()) {
       // We already formed a conversion sequence for this parameter during
       // template argument deduction.
-    } else if (ArgIdx < NumParams) {
+    } else if (ArgIdx < RuntimeArgs.size()) {
       // (C++ 13.3.2p3): for F to be a viable function, there shall
       // exist for each argument an implicit conversion sequence
       // (13.3.3.1) that converts that argument to the corresponding
       // parameter of F.
-      QualType ParamType = Proto->getParamType(ArgIdx);
+      QualType ParamType;
+      if(RuntimeArgs[ArgIdx]) {
+	ParamType = Proto->getParamType(ParamIdx++);
+      } else {
+	auto templatedDecl = Function->getPrimaryTemplate()->getTemplatedDecl();
+	auto constexprParmDecl = cast<ConstexprParmVarDecl>(templatedDecl->getParamDecl(ArgIdx));
+	auto nttpIndex = constexprParmDecl->getConstexprParameter()->getIndex();
+	auto templateArgs = Function->getTemplateSpecializationArgs()->data();
+	ParamType = templateArgs[nttpIndex].getNonTypeTemplateArgumentType();
+      }
       Candidate.Conversions[ConvIdx] = TryCopyInitialization(
           *this, Args[ArgIdx], ParamType, SuppressUserConversions,
           /*InOverloadResolution=*/true,
