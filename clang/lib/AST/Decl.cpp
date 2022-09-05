@@ -325,6 +325,7 @@ LinkageComputer::getLVForTemplateArgumentList(ArrayRef<TemplateArgument> Args,
     case TemplateArgument::Null:
     case TemplateArgument::Integral:
     case TemplateArgument::Expression:
+    case TemplateArgument::Runtime:
       continue;
 
     case TemplateArgument::Type:

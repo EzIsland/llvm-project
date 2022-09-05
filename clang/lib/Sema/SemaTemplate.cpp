@@ -1309,10 +1309,10 @@ bool Sema::RequireStructuralType(QualType T, SourceLocation Loc) {
     return false;
 
   // Structural types are required to be object types or lvalue references.
-  if (T->isRValueReferenceType()) {
-    Diag(Loc, diag::err_template_nontype_parm_rvalue_ref) << T;
-    return true;
-  }
+  //  if (T->isRValueReferenceType()) {
+  //    Diag(Loc, diag::err_template_nontype_parm_rvalue_ref) << T;
+  //    return true;
+  //  }
 
   // Don't mention structural types in our diagnostic prior to C++20. Also,
   // there's not much more we can say about non-scalar non-class types --
@@ -4103,6 +4103,7 @@ static bool isTemplateArgumentTemplateParameter(
   case TemplateArgument::Declaration:
   case TemplateArgument::Pack:
   case TemplateArgument::TemplateExpansion:
+  case TemplateArgument::Runtime:
     return false;
 
   case TemplateArgument::Type: {
@@ -5411,18 +5412,16 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
 
     switch (Arg.getArgument().getKind()) {
     case TemplateArgument::Null:
+    case TemplateArgument::Runtime:
       llvm_unreachable("Should never see a NULL template argument here");
 
     case TemplateArgument::Expression: {
       TemplateArgument Result;
-      unsigned CurSFINAEErrors = NumSFINAEErrors;
+      //unsigned CurSFINAEErrors = NumSFINAEErrors;
       ExprResult Res =
         CheckTemplateArgument(NTTP, NTTPType, Arg.getArgument().getAsExpr(),
                               Result, CTAK);
       if (Res.isInvalid())
-        return true;
-      // If the current template argument causes an error, give up now.
-      if (CurSFINAEErrors < NumSFINAEErrors)
         return true;
 
       // If the resulting expression is new, then use it in place of the
@@ -5565,6 +5564,7 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
 
   switch (Arg.getArgument().getKind()) {
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
     llvm_unreachable("Should never see a NULL template argument here");
 
   case TemplateArgument::Template:
@@ -6943,19 +6943,22 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
     APValue Value;
     ExprResult ArgResult = CheckConvertedConstantExpression(
         Arg, ParamType, Value, CCEK_TemplateArg, Param);
+
+    if(ArgResult.isInvalid() &&
+       Param->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+      // Could not be reduced to a constant, OK for 'maybe constexpr' parameters.
+      Converted = TemplateArgument(TemplateArgument::RuntimeTag{});
+      return ExprResult(Arg);
+    }
+
+    // The expression can't be folded, so we can't keep it at this position in
+    // the AST.
     if (ArgResult.isInvalid())
       return ExprError();
 
     // For a value-dependent argument, CheckConvertedConstantExpression is
     // permitted (and expected) to be unable to determine a value.
     if (ArgResult.get()->isValueDependent()) {
-      Converted = TemplateArgument(ArgResult.get());
-      return ArgResult;
-    }
-
-    if(Value.getKind() == APValue::None &&
-       Param->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
-      // Could not be reduced to a constant, OK for 'maybe constexpr' parameters.
       Converted = TemplateArgument(ArgResult.get());
       return ArgResult;
     }
