@@ -190,6 +190,7 @@ TemplateArgumentDependence TemplateArgument::getDependence() const {
   auto Deps = TemplateArgumentDependence::None;
   switch (getKind()) {
   case Null:
+  case Runtime:
     llvm_unreachable("Should not have a NULL template argument");
 
   case Type:
@@ -250,6 +251,7 @@ bool TemplateArgument::isPackExpansion() const {
   case Pack:
   case Template:
   case NullPtr:
+  case Runtime:
     return false;
 
   case TemplateExpansion:
@@ -284,6 +286,7 @@ QualType TemplateArgument::getNonTypeTemplateArgumentType() const {
   case TemplateArgument::Template:
   case TemplateArgument::TemplateExpansion:
   case TemplateArgument::Pack:
+  case TemplateArgument::Runtime:
     return QualType();
 
   case TemplateArgument::Integral:
@@ -307,6 +310,7 @@ void TemplateArgument::Profile(llvm::FoldingSetNodeID &ID,
   ID.AddInteger(getKind());
   switch (getKind()) {
   case Null:
+  case Runtime:
     break;
 
   case Type:
@@ -364,6 +368,7 @@ bool TemplateArgument::structurallyEquals(const TemplateArgument &Other) const {
   case Type:
   case Expression:
   case NullPtr:
+  case Runtime:
     return TypeOrValue.V == Other.TypeOrValue.V;
 
   case Template:
@@ -408,6 +413,7 @@ TemplateArgument TemplateArgument::getPackExpansionPattern() const {
   case Null:
   case Template:
   case NullPtr:
+  case Runtime:
     return TemplateArgument();
   }
 
@@ -420,6 +426,10 @@ void TemplateArgument::print(const PrintingPolicy &Policy, raw_ostream &Out,
   switch (getKind()) {
   case Null:
     Out << "(no value)";
+    break;
+
+  case Runtime:
+    Out << "(Runtime)";
     break;
 
   case Type: {
@@ -531,6 +541,7 @@ SourceRange TemplateArgumentLoc::getSourceRange() const {
 
   case TemplateArgument::Pack:
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
     return SourceRange();
   }
 
@@ -544,6 +555,9 @@ static const T &DiagTemplateArg(const T &DB, const TemplateArgument &Arg) {
     // This is bad, but not as bad as crashing because of argument
     // count mismatches.
     return DB << "(null template argument)";
+
+  case TemplateArgument::Runtime:
+    return DB << "(Runtime template argument)";
 
   case TemplateArgument::Type:
     return DB << Arg.getAsType();

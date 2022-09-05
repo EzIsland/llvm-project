@@ -247,6 +247,7 @@ checkDeducedTemplateArguments(ASTContext &Context,
 
   switch (X.getKind()) {
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
     llvm_unreachable("Non-deduced template arguments handled above");
 
   case TemplateArgument::Type:
@@ -2319,6 +2320,7 @@ DeduceTemplateArguments(Sema &S,
 
   switch (Param.getKind()) {
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
     llvm_unreachable("Null template argument in parameter list");
 
   case TemplateArgument::Type:
@@ -2571,6 +2573,7 @@ static bool isSameTemplateArg(ASTContext &Context,
 
   switch (X.getKind()) {
     case TemplateArgument::Null:
+    case TemplateArgument::Runtime:
       llvm_unreachable("Comparing NULL template argument");
 
     case TemplateArgument::Type:
@@ -2635,6 +2638,7 @@ Sema::getTrivialTemplateArgumentLoc(const TemplateArgument &Arg,
                                     QualType NTTPType, SourceLocation Loc) {
   switch (Arg.getKind()) {
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
     llvm_unreachable("Can't get a NULL template argument here");
 
   case TemplateArgument::Type:
@@ -2710,6 +2714,10 @@ ConvertDeducedTemplateArgument(Sema &S, NamedDecl *Param,
                                SmallVectorImpl<TemplateArgument> &Output) {
   auto ConvertArg = [&](DeducedTemplateArgument Arg,
                         unsigned ArgumentPackIndex) {
+    if(Arg.getKind() == TemplateArgument::Runtime) {
+      Output.push_back(Arg);
+      return false;
+    }
     // Convert the deduced template argument into a template
     // argument that we can check, almost as if the user had written
     // the template argument explicitly.
@@ -6162,6 +6170,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx,
                            llvm::SmallBitVector &Used) {
   switch (TemplateArg.getKind()) {
   case TemplateArgument::Null:
+  case TemplateArgument::Runtime:
   case TemplateArgument::Integral:
   case TemplateArgument::Declaration:
     break;

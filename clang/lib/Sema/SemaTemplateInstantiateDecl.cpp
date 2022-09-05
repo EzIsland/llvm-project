@@ -4246,7 +4246,7 @@ bool isRuntimeParameter(ParmVarDecl* Param, const TemplateArgumentList& Template
       }
       if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
 	TemplateArgument arg = TemplateArgs[nttp->getIndex()];
-	if(arg.getKind() != TemplateArgument::ArgKind::Expression) {
+	if(arg.getKind() != TemplateArgument::ArgKind::Runtime) {
 	  return false;
 	}
       }
