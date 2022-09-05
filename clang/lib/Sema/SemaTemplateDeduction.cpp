@@ -4171,9 +4171,9 @@ Sema::TemplateDeductionResult Sema::DeduceTemplateArguments(
     if(result) {
       return result;
     }
-    
+
     if(auto parmDecl = dyn_cast<ConstexprParmVarDecl>(Function->getParamDecl(ArgIdx))) {
-	TemplateArgumentLoc arg(TemplateArgument(Args[ArgIdx]), Args[ArgIdx]);
+      TemplateArgumentLoc arg{TemplateArgument{Args[ArgIdx]}, Args[ArgIdx]};
 	SmallVector<TemplateArgument, 4> Converted;
 	for(auto arg : Deduced) {
 	  Converted.push_back(arg);

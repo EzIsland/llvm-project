@@ -1309,10 +1309,10 @@ bool Sema::RequireStructuralType(QualType T, SourceLocation Loc) {
     return false;
 
   // Structural types are required to be object types or lvalue references.
-  //  if (T->isRValueReferenceType()) {
-  //    Diag(Loc, diag::err_template_nontype_parm_rvalue_ref) << T;
-  //    return true;
-  //  }
+   if (T->isRValueReferenceType()) {
+     Diag(Loc, diag::err_template_nontype_parm_rvalue_ref) << T;
+     return true;
+   }
 
   // Don't mention structural types in our diagnostic prior to C++20. Also,
   // there's not much more we can say about non-scalar non-class types --
@@ -5417,13 +5417,17 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
 
     case TemplateArgument::Expression: {
       TemplateArgument Result;
-      //unsigned CurSFINAEErrors = NumSFINAEErrors;
+      unsigned CurSFINAEErrors = NumSFINAEErrors;
       ExprResult Res =
         CheckTemplateArgument(NTTP, NTTPType, Arg.getArgument().getAsExpr(),
                               Result, CTAK);
       if (Res.isInvalid())
         return true;
-
+      
+      // If the current template argument causes an error, give up now.
+      if (CurSFINAEErrors < NumSFINAEErrors)
+        return true;
+      
       // If the resulting expression is new, then use it in place of the
       // old expression in the template argument.
       if (Res.get() != Arg.getArgument().getAsExpr()) {
