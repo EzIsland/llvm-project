@@ -5740,11 +5740,11 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
            << From->getType() << From->getSourceRange() << T;
   }
   // [...] and where the reference binding (if any) binds directly.
-  // if (SCS->ReferenceBinding && !SCS->DirectBinding) {
-  //   return S.Diag(From->getBeginLoc(),
-  //                 diag::err_typecheck_converted_constant_expression_indirect)
-  //          << From->getType() << From->getSourceRange() << T;
-  // }
+  if (SCS->ReferenceBinding && !SCS->DirectBinding) {
+    return S.Diag(From->getBeginLoc(),
+                  diag::err_typecheck_converted_constant_expression_indirect)
+           << From->getType() << From->getSourceRange() << T;
+  }
 
   // Usually we can simply apply the ImplicitConversionSequence we formed
   // earlier, but that's not guaranteed to work when initializing an object of
@@ -5762,12 +5762,6 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
   }
   if (Result.isInvalid())
     return Result;
-
-  if(CCE == Sema::CCEK_TemplateArg && !T->isRecordType() && isa<MaterializeTemporaryExpr>(Result.get())) {
-    auto initEntity = InitializedEntity::InitializeTemplateParameter(T, cast<NonTypeTemplateParmDecl>(Dest));
-      // Lifetime extend the materialized temporary for nttp's
-    S.checkInitializerLifetime(initEntity, Result.get());
-  }
 
   // C++2a [intro.execution]p5:
   //   A full-expression is [...] a constant-expression [...]
@@ -5828,13 +5822,20 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
   if (CCE == Sema::CCEK_TemplateArg && T->isRecordType())
     Kind = ConstantExprKind::ClassTemplateArgument;
   else if (CCE == Sema::CCEK_TemplateArg)
-    //Kind = ConstantExprKind::NonClassTemplateArgument;
-    Kind = ConstantExprKind::Normal;
+    Kind = ConstantExprKind::NonClassTemplateArgument;
   else
     Kind = ConstantExprKind::Normal;
 
   if (!Result.get()->EvaluateAsConstantExpr(Eval, S.Context, Kind) ||
       (RequireInt && !Eval.Val.isInt())) {
+    // The expression can't be folded, so we can't keep it at this position in
+    // the AST.
+    if(auto nttp  = dyn_cast<NonTypeTemplateParmDecl>(Dest)) {
+      if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+	Value = APValue();
+	return Result;
+      }
+    }
     Result = ExprError();
   } else {
     Value = Eval.Val;

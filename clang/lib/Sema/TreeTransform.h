@@ -3669,7 +3669,6 @@ public:
     case TemplateArgument::Pack:
     case TemplateArgument::TemplateExpansion:
     case TemplateArgument::NullPtr:
-    case TemplateArgument::Runtime:
       llvm_unreachable("Pack expansion pattern has no parameter packs");
 
     case TemplateArgument::Type:
@@ -4331,7 +4330,6 @@ bool TreeTransform<Derived>::TransformTemplateArgument(
   switch (Arg.getKind()) {
   case TemplateArgument::Null:
   case TemplateArgument::Pack:
-  case TemplateArgument::Runtime:
     llvm_unreachable("Unexpected TemplateArgument");
 
   case TemplateArgument::Integral:

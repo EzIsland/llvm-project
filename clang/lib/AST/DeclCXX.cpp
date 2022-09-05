@@ -2946,9 +2946,6 @@ StorageDuration LifetimeExtendedTemporaryDecl::getStorageDuration() const {
   if (isa<BindingDecl>(ExtendingDecl))
     return ExtendingDecl->getDeclContext()->isFunctionOrMethod() ? SD_Automatic
                                                                  : SD_Static;
-  if (isa<NonTypeTemplateParmDecl>(ExtendingDecl))
-    return SD_Static;
-  
   return cast<VarDecl>(ExtendingDecl)->getStorageDuration();
 }
 

@@ -33,7 +33,6 @@ public:
   RetTy Visit(REF(TemplateArgument) TA, ParamTys... P) {
     switch (TA.getKind()) {
       DISPATCH(Null);
-      DISPATCH(Runtime);
       DISPATCH(Type);
       DISPATCH(Declaration);
       DISPATCH(NullPtr);
@@ -56,7 +55,6 @@ public:
   }
 
   VISIT_METHOD(Null);
-  VISIT_METHOD(Runtime);
   VISIT_METHOD(Type);
   VISIT_METHOD(Declaration);
   VISIT_METHOD(NullPtr);

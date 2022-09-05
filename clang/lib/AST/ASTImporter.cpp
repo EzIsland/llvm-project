@@ -794,9 +794,6 @@ ASTNodeImporter::import(const TemplateArgument &From) {
   case TemplateArgument::Null:
     return TemplateArgument();
 
-  case TemplateArgument::Runtime:
-    return TemplateArgument(TemplateArgument::RuntimeTag{});
-
   case TemplateArgument::Type: {
     ExpectedType ToTypeOrErr = import(From.getAsType());
     if (!ToTypeOrErr)

@@ -536,9 +536,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case TemplateArgument::Null:
     return true;
 
-  case TemplateArgument::Runtime:
-    return true;
-
   case TemplateArgument::Type:
     return IsStructurallyEquivalent(Context, Arg1.getAsType(), Arg2.getAsType());
 

@@ -6702,8 +6702,8 @@ static LifetimeResult getEntityLifetime(
     return {nullptr, LK_FullExpression};
 
   case InitializedEntity::EK_TemplateParameter:
-    // Non type template parameters extend the lifetime of materialized temporaries
-    return {Entity, LK_Extended};
+    // FIXME: This will always be ill-formed; should we eagerly diagnose it here?
+    return {nullptr, LK_FullExpression};
 
   case InitializedEntity::EK_Result:
     //   -- The lifetime of a temporary bound to the returned value in a

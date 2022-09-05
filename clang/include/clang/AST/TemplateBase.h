@@ -98,11 +98,7 @@ public:
 
     /// The template argument is actually a parameter pack. Arguments are stored
     /// in the Args struct.
-    Pack,
-
-    /// The template argument corresponds to a 'maybe constepxr' parameter
-    /// and has been deduced to a runtime value. 
-    Runtime
+    Pack
   };
 
 private:
@@ -151,12 +147,9 @@ private:
     struct TV TypeOrValue;
   };
 
-public: 
+public:
   /// Construct an empty, invalid template argument.
   constexpr TemplateArgument() : TypeOrValue({Null, 0}) {}
-
-  struct RuntimeTag { };
-  TemplateArgument(RuntimeTag) : TypeOrValue({Runtime, 0}) {}
 
   /// Construct a template type argument.
   TemplateArgument(QualType T, bool isNullPtr = false) {

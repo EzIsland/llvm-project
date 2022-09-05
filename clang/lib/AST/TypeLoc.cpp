@@ -569,7 +569,6 @@ void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
   for (unsigned i = 0, e = NumArgs; i != e; ++i) {
     switch (Args[i].getKind()) {
     case TemplateArgument::Null:
-    case TemplateArgument::Runtime:
       llvm_unreachable("Impossible TemplateArgument");
 
     case TemplateArgument::Integral:

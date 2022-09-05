@@ -5160,7 +5160,6 @@ void ASTRecordWriter::AddTemplateArgumentLocInfo(
   case TemplateArgument::Declaration:
   case TemplateArgument::NullPtr:
   case TemplateArgument::Pack:
-  case TemplateArgument::Runtime:
     // FIXME: Is this right?
     break;
   }
