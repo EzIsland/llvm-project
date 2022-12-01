@@ -51,6 +51,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ConvertUTF.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SaveAndRestore.h"
 
 using namespace clang;
@@ -6676,14 +6677,24 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
   FunctionDecl *FDecl = dyn_cast_or_null<FunctionDecl>(NDecl);
   unsigned BuiltinID = (FDecl ? FDecl->getBuiltinID() : 0);
 
-  auto RuntimeArgs = FDecl->getRuntimeParameters();
   SmallVector<Expr*, 4> ArgsStorage;
-  for(unsigned idx = 0; idx != AllArgs.size(); ++idx) {
-    if(RuntimeArgs[idx]) {
-      ArgsStorage.push_back(AllArgs[idx]);
+  ArrayRef<Expr*> Args;
+  if(FDecl) {
+    
+    auto RuntimeArgs = FDecl->getRuntimeParameters();
+    
+    for(unsigned idx = 0; idx != AllArgs.size(); ++idx) {
+      if(idx >= RuntimeArgs.size() && FDecl->isVariadic()) {
+	ArgsStorage.push_back(AllArgs[idx]);
+      } else if(RuntimeArgs[idx]) {
+	ArgsStorage.push_back(AllArgs[idx]);
+      }
     }
+    Args = ArgsStorage;
+  } else {
+    Args = AllArgs;
   }
-  ArrayRef<Expr*> Args = ArgsStorage;
+  
   // Functions with 'interrupt' attribute cannot be called directly.
   if (FDecl && FDecl->hasAttr<AnyX86InterruptAttr>()) {
     Diag(Fn->getExprLoc(), diag::err_anyx86_interrupt_called);

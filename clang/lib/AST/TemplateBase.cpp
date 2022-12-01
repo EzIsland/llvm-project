@@ -190,9 +190,9 @@ TemplateArgumentDependence TemplateArgument::getDependence() const {
   auto Deps = TemplateArgumentDependence::None;
   switch (getKind()) {
   case Null:
-  case Runtime:
     llvm_unreachable("Should not have a NULL template argument");
-
+  case Runtime:
+    return TemplateArgumentDependence::None;
   case Type:
     Deps = toTemplateArgumentDependence(getAsType()->getDependence());
     if (isa<PackExpansionType>(getAsType()))

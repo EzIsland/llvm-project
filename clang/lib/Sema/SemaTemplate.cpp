@@ -5425,8 +5425,8 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
         return true;
       
       // If the current template argument causes an error, give up now.
-      if (CurSFINAEErrors < NumSFINAEErrors)
-        return true;
+      // if (CurSFINAEErrors < NumSFINAEErrors)
+      //   return true;
       
       // If the resulting expression is new, then use it in place of the
       // old expression in the template argument.

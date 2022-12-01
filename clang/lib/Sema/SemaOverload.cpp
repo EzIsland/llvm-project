@@ -5828,14 +5828,6 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
 
   if (!Result.get()->EvaluateAsConstantExpr(Eval, S.Context, Kind) ||
       (RequireInt && !Eval.Val.isInt())) {
-    // The expression can't be folded, so we can't keep it at this position in
-    // the AST.
-    if(auto nttp  = dyn_cast<NonTypeTemplateParmDecl>(Dest)) {
-      if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
-	Value = APValue();
-	return Result;
-      }
-    }
     Result = ExprError();
   } else {
     Value = Eval.Val;
@@ -5846,6 +5838,14 @@ static ExprResult CheckConvertedConstantExpression(Sema &S, Expr *From,
       if (ReturnPreNarrowingValue)
         Value = std::move(PreNarrowingValue);
       return E;
+    }
+  }
+
+  // We could be speculatively checking the constexpr category of a
+  // constexpr paramater. Do not issue a diagnostic.
+  if(auto* nttp  = dyn_cast<NonTypeTemplateParmDecl>(Dest)) {
+    if(nttp->getConstexprParamKind() == NonTypeTemplateParmDecl::CPK_CONSTEXPR) {
+      return Result;
     }
   }
 
@@ -6538,7 +6538,7 @@ void Sema::AddOverloadCandidate(
       // parameter of F.
       QualType ParamType;
       if(RuntimeArgs[ArgIdx]) {
-	ParamType = Proto->getParamType(ParamIdx++);
+	ParamType = Proto->getParamType(ParamIdx);
       } else {
 	auto templatedDecl = Function->getPrimaryTemplate()->getTemplatedDecl();
 	auto constexprParmDecl = cast<ConstexprParmVarDecl>(templatedDecl->getParamDecl(ArgIdx));
@@ -6562,6 +6562,9 @@ void Sema::AddOverloadCandidate(
       // argument for which there is no corresponding parameter is
       // considered to ""match the ellipsis" (C+ 13.3.3.1.3).
       Candidate.Conversions[ConvIdx].setEllipsis();
+    }
+    if(ArgIdx < RuntimeArgs.size() && RuntimeArgs[ArgIdx]) {
+      ++ParamIdx;
     }
   }
 
