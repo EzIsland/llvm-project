@@ -26,6 +26,7 @@
 #include "clang/AST/NonTrivialTypeVisitor.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/DiagnosticParse.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
@@ -13802,6 +13803,16 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
     auto oldContext = D.getContext();
     D.setContext(DeclaratorContext::TemplateParam);
     ConstexprParameter = llvm::dyn_cast<NonTypeTemplateParmDecl>(ActOnNonTypeTemplateParameter(getCurScope(), D, depth, position, SourceLocation(), nullptr));
+    
+    QualType originalType = ConstexprParameter->getType();
+    if(originalType->isReferenceType()) {
+      if(DS.getConstexprSpecifier() == ConstexprSpecKind::Consteval) {
+	Diag(D.getIdentifierLoc(), diag::err_consteval_param_reference_type);
+      } else {
+	ConstexprParameter->setType(originalType.getNonReferenceType().getUnqualifiedType());
+      }
+    }
+    
     D.setContext(oldContext);
     ConstexprParameter->setImplicit(true);
     inventedParameterInfo->TemplateParams.push_back(ConstexprParameter);

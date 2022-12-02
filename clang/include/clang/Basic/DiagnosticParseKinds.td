@@ -337,6 +337,7 @@ def warn_cxx98_compat_generalized_initializer_lists : Warning<
   "generalized initializer lists are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def err_constexpr_param_default_arg : Error<"Constexpr parameters may not have default arguments">;
+def err_consteval_param_reference_type : Error<"Consteval parameters may not have reference type">;
 def err_init_list_bin_op : Error<"initializer list cannot be used on the "
   "%select{left|right}0 hand side of operator '%1'">;
 def warn_cxx98_compat_trailing_return_type : Warning<
