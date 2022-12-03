@@ -409,6 +409,7 @@ static bool isSimpleAPValue(const APValue &Value) {
   switch (Value.getKind()) {
   case APValue::None:
   case APValue::Indeterminate:
+  case APValue::Runtime:
   case APValue::Int:
   case APValue::Float:
   case APValue::FixedPoint:
@@ -482,6 +483,9 @@ void TextNodeDumper::Visit(const APValue &Value, QualType Ty) {
     return;
   case APValue::Indeterminate:
     OS << "Indeterminate";
+    return;
+  case APValue::Runtime:
+    OS << "Runtime";
     return;
   case APValue::Int:
     OS << "Int ";

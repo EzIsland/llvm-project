@@ -6976,6 +6976,9 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
     case APValue::Indeterminate:
       llvm_unreachable("result of constant evaluation should be initialized");
       break;
+    case APValue::Runtime:
+      llvm_unreachable("result of constant evaluation should not be runtime value");
+      break;
     case APValue::Int:
       assert(ParamType->isIntegralOrEnumerationType());
       Converted = TemplateArgument(Context, Value.getInt(), CanonParamType);

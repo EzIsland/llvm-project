@@ -2466,6 +2466,7 @@ static bool HandleConversionToBool(const APValue &Val, bool &Result) {
   switch (Val.getKind()) {
   case APValue::None:
   case APValue::Indeterminate:
+  case APValue::Runtime:
     return false;
   case APValue::Int:
     Result = Val.getInt().getBoolValue();
@@ -6817,6 +6818,7 @@ class APValueToBufferConverter {
     switch (Val.getKind()) {
     case APValue::Indeterminate:
     case APValue::None:
+    case APValue::Runtime:
       return true;
 
     case APValue::Int:

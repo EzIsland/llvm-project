@@ -255,6 +255,7 @@ ConstantExpr::getStorageKind(const APValue &Value) {
   switch (Value.getKind()) {
   case APValue::None:
   case APValue::Indeterminate:
+  case APValue::Runtime:
     return ConstantExpr::RSK_None;
   case APValue::Int:
     if (!Value.getInt().needsCleanup())

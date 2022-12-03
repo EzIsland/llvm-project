@@ -2038,6 +2038,7 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
   switch (Value.getKind()) {
   case APValue::None:
   case APValue::Indeterminate:
+  case APValue::Runtime:
     // Out-of-lifetime and indeterminate values can be modeled as 'undef'.
     return llvm::UndefValue::get(CGM.getTypes().ConvertType(DestType));
   case APValue::LValue:

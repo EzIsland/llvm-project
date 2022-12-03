@@ -1662,6 +1662,7 @@ void MicrosoftCXXNameMangler::mangleTemplateArgValue(QualType T,
   switch (V.getKind()) {
   case APValue::None:
   case APValue::Indeterminate:
+  case APValue::Runtime:
     // FIXME: MSVC doesn't allow this, so we can't be sure how it should be
     // mangled.
     if (WithScalarType)

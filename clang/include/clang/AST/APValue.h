@@ -129,6 +129,8 @@ public:
     None,
     /// This object has an indeterminate value (C++ [basic.indet]).
     Indeterminate,
+    /// This object has a value but it could not be determined at compile-time
+    Runtime,
     Int,
     Float,
     FixedPoint,
@@ -361,11 +363,17 @@ public:
     return Result;
   }
 
+  static APValue RuntimeValue() {
+    APValue Result;
+    Result.Kind = Runtime;
+    return Result;
+  }
+
   APValue &operator=(const APValue &RHS);
   APValue &operator=(APValue &&RHS);
 
   ~APValue() {
-    if (Kind != None && Kind != Indeterminate)
+    if (Kind != None && Kind != Indeterminate && Kind != Runtime)
       DestroyDataAndMakeUninit();
   }
 
@@ -388,6 +396,7 @@ public:
 
   bool isAbsent() const { return Kind == None; }
   bool isIndeterminate() const { return Kind == Indeterminate; }
+  bool isRuntime() const { return Kind == Runtime; }
   bool hasValue() const { return Kind != None && Kind != Indeterminate; }
 
   bool isInt() const { return Kind == Int; }
