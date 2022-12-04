@@ -12383,6 +12383,12 @@ bool DataRecursiveIntBinOpEvaluator::
   }
 
   if (E->isLogicalOp()) {
+    if (LHSResult.Val.isRuntime() && !RHSResult.Failed)
+      return Success(APValue::RuntimeValue(), E, Result);
+
+    if (RHSResult.Val.isRuntime() && !LHSResult.Failed)
+      return Success(APValue::RuntimeValue(), E, Result);
+    
     bool lhsResult, rhsResult;
     bool LHSIsOK = HandleConversionToBool(LHSResult.Val, lhsResult);
     bool RHSIsOK = HandleConversionToBool(RHSResult.Val, rhsResult);
@@ -13158,6 +13164,7 @@ bool IntExprEvaluator::VisitUnaryOperator(const UnaryOperator *E) {
   case UO_Minus: {
     if (!Visit(E->getSubExpr()))
       return false;
+    if (Result.isRuntime()) return Success(Result, E);
     if (!Result.isInt()) return Error(E);
     const APSInt &Value = Result.getInt();
     if (Value.isSigned() && Value.isMinSignedValue() && E->canOverflow() &&
@@ -13169,13 +13176,22 @@ bool IntExprEvaluator::VisitUnaryOperator(const UnaryOperator *E) {
   case UO_Not: {
     if (!Visit(E->getSubExpr()))
       return false;
+    if (Result.isRuntime()) return Success(Result, E);
     if (!Result.isInt()) return Error(E);
     return Success(~Result.getInt(), E);
   }
   case UO_LNot: {
-    bool bres;
-    if (!EvaluateAsBooleanCondition(E->getSubExpr(), bres, Info))
+    APValue Val;
+    if (!Evaluate(Val, Info, E->getSubExpr()))
       return false;
+
+    if (Val.isRuntime())
+      return Success(APValue::RuntimeValue(), E);
+
+    bool bres;
+    if (!HandleConversionToBool(Val, bres))
+      return false;
+      
     return Success(!bres, E);
   }
   }
@@ -13254,9 +13270,17 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_BooleanToSignedIntegral:
   case CK_FloatingComplexToBoolean:
   case CK_IntegralComplexToBoolean: {
-    bool BoolResult;
-    if (!EvaluateAsBooleanCondition(SubExpr, BoolResult, Info))
+    APValue Val;
+    if (!Evaluate(Val, Info, SubExpr))
       return false;
+
+    if (Val.isRuntime())
+      return Success(APValue::RuntimeValue(), E);
+
+    bool BoolResult;
+    if (!HandleConversionToBool(Val, BoolResult))
+      return false;
+    
     uint64_t IntResult = BoolResult;
     if (BoolResult && E->getCastKind() == CK_BooleanToSignedIntegral)
       IntResult = (uint64_t)-1;
@@ -13409,6 +13433,8 @@ bool FixedPointExprEvaluator::VisitUnaryOperator(const UnaryOperator *E) {
       return Visit(E->getSubExpr());
     case UO_Minus: {
       if (!Visit(E->getSubExpr())) return false;
+      if (Result.isRuntime())
+	return Success(APValue::RuntimeValue(), E);
       if (!Result.isFixedPoint())
         return Error(E);
       bool Overflowed;
@@ -13418,9 +13444,17 @@ bool FixedPointExprEvaluator::VisitUnaryOperator(const UnaryOperator *E) {
       return Success(Negated, E);
     }
     case UO_LNot: {
-      bool bres;
-      if (!EvaluateAsBooleanCondition(E->getSubExpr(), bres, Info))
+      APValue Val;
+      if (!Evaluate(Val, Info, E->getSubExpr()))
         return false;
+
+      if (Val.isRuntime())
+	return Success(APValue::RuntimeValue(), E);
+
+      bool bres;
+      if (!HandleConversionToBool(Val, bres))
+	return false;
+      
       return Success(!bres, E);
     }
   }

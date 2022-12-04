@@ -117,7 +117,7 @@ OptionalDiagnostic State::diag(SourceLocation Loc, diag::kind DiagId,
   if (!checkingPotentialConstantExpression()) {
     addCallStack(Limit);
   }
-  return OptionalDiagnostic(&(*EvalStatus.Diag)[0].second);
+  return OptionalDiagnostic(&EvalStatus.Diag->back().second);
 }
 
 const LangOptions &State::getLangOpts() const { return getCtx().getLangOpts(); }
