@@ -65,10 +65,12 @@ public:
   virtual bool hasActiveDiagnostic() = 0;
   virtual void setActiveDiagnostic(bool Flag) = 0;
   virtual void setFoldFailureDiagnostic(bool Flag) = 0;
+  virtual void setCCEDiagnostic(bool Flag) = 0;
   virtual Expr::EvalStatus &getEvalStatus() const = 0;
   virtual ASTContext &getCtx() const = 0;
   virtual bool hasPriorDiagnostic() = 0;
   virtual unsigned getCallStackDepth() = 0;
+  virtual bool partialConstantEvaluation() const = 0;
 
 public:
   // Diagnose that the evaluation could not be folded (FF => FoldFailure)
@@ -107,6 +109,21 @@ public:
           diag::kind DiagId = diag::note_invalid_subexpr_in_const_expr,
           unsigned ExtraNotes = 0);
 
+  OptionalDiagnostic
+  PCFDiag(SourceLocation Loc,
+          diag::kind DiagId = diag::note_invalid_subexpr_in_const_expr,
+          unsigned ExtraNotes = 0);
+
+  OptionalDiagnostic
+  PCFDiag(const Expr *E,
+          diag::kind DiagId = diag::note_invalid_subexpr_in_const_expr,
+          unsigned ExtraNotes = 0);
+
+  OptionalDiagnostic
+  PCFDiag(const SourceInfo &SI,
+          diag::kind DiagId = diag::note_invalid_subexpr_in_const_expr,
+          unsigned ExtraNotes = 0);  
+
   /// Add a note to a prior diagnostic.
   OptionalDiagnostic Note(SourceLocation Loc, diag::kind DiagId);
 
@@ -119,12 +136,16 @@ public:
   const LangOptions &getLangOpts() const;
 
 private:
+  enum class InterpDiagKind {
+    CCE, FF, PCF
+  };
+  
   void addCallStack(unsigned Limit);
 
   PartialDiagnostic &addDiag(SourceLocation Loc, diag::kind DiagId);
 
   OptionalDiagnostic diag(SourceLocation Loc, diag::kind DiagId,
-                          unsigned ExtraNotes, bool IsCCEDiag);
+                          unsigned ExtraNotes, InterpDiagKind InterpDiagKind);
 };
 
 } // namespace interp

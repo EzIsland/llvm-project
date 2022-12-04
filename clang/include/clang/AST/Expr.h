@@ -590,6 +590,10 @@ public:
     /// foldable. If the expression is foldable, but not a constant expression,
     /// the notes will describes why it isn't a constant expression. If the
     /// expression *is* a constant expression, no notes will be produced.
+    ///
+    /// If partial constant folding is enabled, the notes will contain diagnostics
+    /// for each expression that introduced a runtime value. The notes may be safely
+    /// ignored if the final result of the evaluation could be folded.
     SmallVectorImpl<PartialDiagnosticAt> *Diag;
 
     EvalStatus()

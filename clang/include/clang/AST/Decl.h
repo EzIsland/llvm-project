@@ -1322,6 +1322,10 @@ public:
   /// Returns a pointer to the value if evaluation succeeded, 0 otherwise.
   APValue *evaluateValue() const;
 
+  /// Mark the evaluated value of this variable as a Runtime APValue
+  /// Returns a pointer to the APValue result.
+  APValue* evaluateAsRuntime() const;
+
 private:
   APValue *evaluateValueImpl(SmallVectorImpl<PartialDiagnosticAt> &Notes,
                              bool IsConstantInitialization) const;

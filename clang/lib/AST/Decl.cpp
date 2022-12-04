@@ -2433,6 +2433,15 @@ APValue *VarDecl::evaluateValue() const {
   return evaluateValueImpl(Notes, hasConstantInitialization());
 }
 
+APValue *VarDecl::evaluateAsRuntime() const {
+  assert((!getEvaluatedValue() || (getEvaluatedValue() && getEvaluatedValue()->isRuntime()))
+	 && "Var should either be unevaluated, or already evaluated to a Runtime value");
+  
+  EvaluatedStmt* Eval = ensureEvaluatedStmt();
+  Eval->Evaluated = APValue::RuntimeValue();
+  return &Eval->Evaluated;
+}
+
 APValue *VarDecl::evaluateValueImpl(SmallVectorImpl<PartialDiagnosticAt> &Notes,
                                     bool IsConstantInitialization) const {
   EvaluatedStmt *Eval = ensureEvaluatedStmt();

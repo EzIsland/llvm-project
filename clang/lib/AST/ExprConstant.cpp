@@ -917,6 +917,9 @@ namespace {
     /// fold (not just why it's not strictly a constant expression)?
     bool HasFoldFailureDiagnostic;
 
+    // Have we emitted a diagnostic for a core constant expression error.
+    bool HasCCEDiagnostic;
+
     /// Whether or not we're in a context where the front end requires a
     /// constant value.
     bool InConstantContext;
@@ -933,6 +936,10 @@ namespace {
     /// Note that we still need to evaluate the expression normally when this
     /// is set; this is used when evaluating ICEs in C.
     bool CheckingForUndefinedBehavior = false;
+
+    /// Whether to permit partial constant evaluation. When enabled, runtime values
+    /// are tracked during evaluation as APValue's with kind 'Runtime'. 
+    bool PartialConstantEvaluation = true;
 
     enum EvaluationMode {
       /// Evaluate as a constant expression. Stop if we find that the expression
@@ -1114,6 +1121,14 @@ namespace {
       HasFoldFailureDiagnostic = Flag;
     }
 
+    void setCCEDiagnostic(bool Flag) override {
+      HasCCEDiagnostic = Flag;
+    }
+
+    bool partialConstantEvaluation() const override {
+      return PartialConstantEvaluation;
+    }
+
     Expr::EvalStatus &getEvalStatus() const override { return EvalStatus; }
 
     ASTContext &getCtx() const override { return Ctx; }
@@ -1126,6 +1141,12 @@ namespace {
     // EM_ConstantFold mode.
     bool hasPriorDiagnostic() override {
       if (!EvalStatus.Diag->empty()) {
+	if (!HasFoldFailureDiagnostic && !HasCCEDiagnostic) {
+	  // Only PCF diagnostics seen so far. Allow new diagnostics to
+	  // append to them (for PCF's) or overwrite (others)
+	  return false;
+	}
+	
         switch (EvalMode) {
         case EM_ConstantFold:
         case EM_IgnoreSideEffects:
@@ -4057,13 +4078,20 @@ static CompleteObject findCompleteObject(EvalInfo &Info, const Expr *E,
         if (!IsConstant) {
           if (!IsAccess)
             return CompleteObject(LVal.getLValueBase(), nullptr, BaseType);
-          if (Info.getLangOpts().CPlusPlus) {
-            Info.FFDiag(E, diag::note_constexpr_ltor_non_const_int, 1) << VD;
+
+	  if (Info.getLangOpts().CPlusPlus) {
+            Info.PCFDiag(E, diag::note_constexpr_ltor_non_const_int, 1) << VD;
             Info.Note(VD->getLocation(), diag::note_declared_at);
           } else {
-            Info.FFDiag(E);
+            Info.PCFDiag(E);
           }
-          return CompleteObject();
+
+	  if (Info.PartialConstantEvaluation) {
+	    BaseVal = VD->evaluateAsRuntime();
+	    return CompleteObject(LVal.getLValueBase(), BaseVal, BaseType);
+	  } else {
+	    return CompleteObject();
+	  }
         }
       } else if (!IsAccess) {
         return CompleteObject(LVal.getLValueBase(), nullptr, BaseType);
@@ -10671,6 +10699,10 @@ public:
                             E->getType()->isUnsignedIntegerOrEnumerationType());
     return true;
   }
+  bool Success(const APValue &I, const Expr *E, APValue &Result) {
+    Result = I;
+    return true;
+  }
   bool Success(const llvm::APInt &I, const Expr *E) {
     return Success(I, E, Result);
   }
@@ -10690,7 +10722,7 @@ public:
   }
 
   bool Success(const APValue &V, const Expr *E) {
-    if (V.isLValue() || V.isAddrLabelDiff() || V.isIndeterminate()) {
+    if (V.isLValue() || V.isAddrLabelDiff() || V.isIndeterminate() || V.isRuntime()) {
       Result = V;
       return true;
     }
@@ -12243,6 +12275,9 @@ private:
   bool Success(const APSInt &Value, const Expr *E, APValue &Result) {
     return IntEval.Success(Value, E, Result);
   }
+  bool Success(const APValue &Value, const Expr *E, APValue &Result) {
+    return IntEval.Success(Value, E, Result);
+  }
   bool Error(const Expr *E) {
     return IntEval.Error(E);
   }
@@ -12380,6 +12415,9 @@ bool DataRecursiveIntBinOpEvaluator::
   const APValue &LHSVal = LHSResult.Val;
   const APValue &RHSVal = RHSResult.Val;
 
+  if (LHSVal.isRuntime() || RHSVal.isRuntime())
+    return Success(APValue::RuntimeValue(), E, Result);
+    
   // Handle cases like (unsigned long)&a + 4.
   if (E->isAdditiveOp() && LHSVal.isLValue() && RHSVal.isInt()) {
     Result = LHSVal;
@@ -14727,7 +14765,16 @@ bool Expr::EvaluateAsRValue(EvalResult &Result, const ASTContext &Ctx,
          "Expression evaluator can't be called on a dependent expression.");
   EvalInfo Info(Ctx, Result, EvalInfo::EM_IgnoreSideEffects);
   Info.InConstantContext = InConstantContext;
-  return ::EvaluateAsRValue(this, Result, Ctx, Info);
+  if (!::EvaluateAsRValue(this, Result, Ctx, Info))
+    return false;
+
+  if (Result.Val.isRuntime())
+    return false;
+
+  if (Result.Diag)
+    Result.Diag->clear();
+
+  return true;
 }
 
 bool Expr::EvaluateAsBooleanCondition(bool &Result, const ASTContext &Ctx,
@@ -14746,7 +14793,16 @@ bool Expr::EvaluateAsInt(EvalResult &Result, const ASTContext &Ctx,
          "Expression evaluator can't be called on a dependent expression.");
   EvalInfo Info(Ctx, Result, EvalInfo::EM_IgnoreSideEffects);
   Info.InConstantContext = InConstantContext;
-  return ::EvaluateAsInt(this, Result, Ctx, AllowSideEffects, Info);
+  if (!::EvaluateAsInt(this, Result, Ctx, AllowSideEffects, Info))
+    return false;
+
+  if (Result.Val.isRuntime())
+    return false;
+
+  if (Result.Diag)
+    Result.Diag->clear();
+
+  return true;
 }
 
 bool Expr::EvaluateAsFixedPoint(EvalResult &Result, const ASTContext &Ctx,
@@ -14756,7 +14812,16 @@ bool Expr::EvaluateAsFixedPoint(EvalResult &Result, const ASTContext &Ctx,
          "Expression evaluator can't be called on a dependent expression.");
   EvalInfo Info(Ctx, Result, EvalInfo::EM_IgnoreSideEffects);
   Info.InConstantContext = InConstantContext;
-  return ::EvaluateAsFixedPoint(this, Result, Ctx, AllowSideEffects, Info);
+  if (!::EvaluateAsFixedPoint(this, Result, Ctx, AllowSideEffects, Info))
+    return false;
+
+  if (Result.Val.isRuntime())
+    return false;
+
+  if (Result.Diag)
+    Result.Diag->clear();
+
+  return true;
 }
 
 bool Expr::EvaluateAsFloat(APFloat &Result, const ASTContext &Ctx,
@@ -14793,8 +14858,15 @@ bool Expr::EvaluateAsLValue(EvalResult &Result, const ASTContext &Ctx,
                                      Ctx.getLValueReferenceType(getType()), LV,
                                      ConstantExprKind::Normal, CheckedTemps))
     return false;
-
+  
   LV.moveInto(Result.Val);
+
+  if (Result.Val.isRuntime())
+    return false;
+
+  if (Result.Diag)
+    Result.Diag->clear();
+  
   return true;
 }
 
@@ -14849,6 +14921,12 @@ bool Expr::EvaluateAsConstantExpr(EvalResult &Result, const ASTContext &Ctx,
   if (!::EvaluateInPlace(Result.Val, Info, LVal, this) || Result.HasSideEffects)
     return false;
 
+  if (Result.Val.isRuntime())
+    return false;
+
+  if (Result.Diag)
+    Result.Diag->clear();
+  
   if (!Info.discardCleanups())
     llvm_unreachable("Unhandled cleanup; missing full expression marker?");
 
@@ -14918,6 +14996,12 @@ bool Expr::EvaluateAsInitializer(APValue &Value, const ASTContext &Ctx,
     if (!Info.discardCleanups())
       llvm_unreachable("Unhandled cleanup; missing full expression marker?");
   }
+
+  if (Value.isRuntime())
+    return false;
+  
+  Notes.clear();
+  
   return CheckConstantExpression(Info, DeclLoc, DeclTy, Value,
                                  ConstantExprKind::Normal) &&
          CheckMemoryLeaks(Info);
@@ -14977,6 +15061,9 @@ APSInt Expr::EvaluateKnownConstInt(const ASTContext &Ctx,
   assert(Result && "Could not evaluate expression");
   assert(EVResult.Val.isInt() && "Expression did not evaluate to integer");
 
+  if (Diag)
+    Diag->clear();
+  
   return EVResult.Val.getInt();
 }
 
@@ -14996,6 +15083,9 @@ APSInt Expr::EvaluateKnownConstIntCheckOverflow(
   assert(Result && "Could not evaluate expression");
   assert(EVResult.Val.isInt() && "Expression did not evaluate to integer");
 
+  if (Diag)
+    Diag->clear();
+  
   return EVResult.Val.getInt();
 }
 
@@ -15533,7 +15623,7 @@ Optional<llvm::APSInt> Expr::getIntegerConstantExpr(const ASTContext &Ctx,
   EvalInfo Info(Ctx, Status, EvalInfo::EM_IgnoreSideEffects);
   Info.InConstantContext = true;
 
-  if (!::EvaluateAsInt(this, ExprResult, Ctx, SE_AllowSideEffects, Info))
+  if (!::EvaluateAsInt(this, ExprResult, Ctx, SE_AllowSideEffects, Info) || !ExprResult.Val.isInt())
     llvm_unreachable("ICE cannot be evaluated!");
 
   return ExprResult.Val.getInt();
@@ -15562,21 +15652,19 @@ bool Expr::isCXX11ConstantExpr(const ASTContext &Ctx, APValue *Result,
   EvalInfo Info(Ctx, Status, EvalInfo::EM_ConstantExpression);
 
   APValue Scratch;
+  APValue* ResultPtr = Result ? Result : &Scratch;
   bool IsConstExpr =
-      ::EvaluateAsRValue(Info, this, Result ? *Result : Scratch) &&
+      ::EvaluateAsRValue(Info, this, *ResultPtr) &&
       // FIXME: We don't produce a diagnostic for this, but the callers that
       // call us on arbitrary full-expressions should generally not care.
       Info.discardCleanups() && !Status.HasSideEffects;
 
-  if (!Diags.empty()) {
-    IsConstExpr = false;
-    if (Loc) *Loc = Diags[0].first;
-  } else if (!IsConstExpr) {
-    // FIXME: This shouldn't happen.
-    if (Loc) *Loc = getExprLoc();
+  if (!IsConstExpr || ResultPtr->isRuntime()) {
+    if (Loc && !Diags.empty()) *Loc = Diags[0].first;
+    return false;
   }
-
-  return IsConstExpr;
+  
+  return true;
 }
 
 bool Expr::EvaluateWithSubstitution(APValue &Value, ASTContext &Ctx,
@@ -15637,8 +15725,10 @@ bool Expr::EvaluateWithSubstitution(APValue &Value, ASTContext &Ctx,
   CallStackFrame Frame(Info, Callee->getLocation(), Callee, ThisPtr, Call);
   // FIXME: Missing ExprWithCleanups in enable_if conditions?
   FullExpressionRAII Scope(Info);
-  return Evaluate(Value, Info, this) && Scope.destroy() &&
-         !Info.EvalStatus.HasSideEffects;
+  bool IsConstExpr = Evaluate(Value, Info, this) && Scope.destroy() &&
+    !Info.EvalStatus.HasSideEffects;
+
+  return IsConstExpr && !Value.isRuntime();
 }
 
 bool Expr::isPotentialConstantExpr(const FunctionDecl *FD,
@@ -15675,18 +15765,24 @@ bool Expr::isPotentialConstantExpr(const FunctionDecl *FD,
   ArrayRef<const Expr*> Args;
 
   APValue Scratch;
+  bool IsConstExpr;
   if (const CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(FD)) {
     // Evaluate the call as a constant initializer, to allow the construction
     // of objects of non-literal types.
     Info.setEvaluatingDecl(This.getLValueBase(), Scratch);
-    HandleConstructorCall(&VIE, This, Args, CD, Info, Scratch);
+    IsConstExpr = HandleConstructorCall(&VIE, This, Args, CD, Info, Scratch);
   } else {
     SourceLocation Loc = FD->getLocation();
-    HandleFunctionCall(Loc, FD, (MD && MD->isInstance()) ? &This : nullptr,
-                       Args, CallRef(), FD->getBody(), Info, Scratch, nullptr);
+    IsConstExpr = HandleFunctionCall(Loc, FD, (MD && MD->isInstance()) ? &This : nullptr,
+				    Args, CallRef(), FD->getBody(), Info, Scratch, nullptr);
   }
 
-  return Diags.empty();
+  if (!IsConstExpr || Scratch.isRuntime())
+    return false;
+
+  Diags.clear();
+  
+  return true;
 }
 
 bool Expr::isPotentialConstantExprUnevaluated(Expr *E,
@@ -15708,8 +15804,12 @@ bool Expr::isPotentialConstantExprUnevaluated(Expr *E,
   CallStackFrame Frame(Info, SourceLocation(), FD, /*This*/ nullptr, CallRef());
 
   APValue ResultScratch;
-  Evaluate(ResultScratch, Info, E);
-  return Diags.empty();
+  if (!Evaluate(ResultScratch, Info, E) || ResultScratch.isRuntime())
+    return false;
+
+  Diags.clear();
+  
+  return true;
 }
 
 bool Expr::tryEvaluateObjectSize(uint64_t &Result, ASTContext &Ctx,

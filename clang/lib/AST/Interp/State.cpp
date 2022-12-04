@@ -11,6 +11,7 @@
 #include "Program.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CXXInheritance.h"
+#include "clang/AST/OptionalDiagnostic.h"
 
 using namespace clang;
 using namespace clang::interp;
@@ -19,34 +20,22 @@ State::~State() {}
 
 OptionalDiagnostic State::FFDiag(SourceLocation Loc, diag::kind DiagId,
                                  unsigned ExtraNotes) {
-  return diag(Loc, DiagId, ExtraNotes, false);
+  return diag(Loc, DiagId, ExtraNotes, InterpDiagKind::FF);
 }
 
 OptionalDiagnostic State::FFDiag(const Expr *E, diag::kind DiagId,
                                  unsigned ExtraNotes) {
-  if (getEvalStatus().Diag)
-    return diag(E->getExprLoc(), DiagId, ExtraNotes, false);
-  setActiveDiagnostic(false);
-  return OptionalDiagnostic();
+  return FFDiag(E->getExprLoc(), DiagId, ExtraNotes);
 }
 
 OptionalDiagnostic State::FFDiag(const SourceInfo &SI, diag::kind DiagId,
                                  unsigned ExtraNotes) {
-  if (getEvalStatus().Diag)
-    return diag(SI.getLoc(), DiagId, ExtraNotes, false);
-  setActiveDiagnostic(false);
-  return OptionalDiagnostic();
+  return FFDiag(SI.getLoc(), DiagId, ExtraNotes);
 }
 
 OptionalDiagnostic State::CCEDiag(SourceLocation Loc, diag::kind DiagId,
                                   unsigned ExtraNotes) {
-  // Don't override a previous diagnostic. Don't bother collecting
-  // diagnostics if we're evaluating for overflow.
-  if (!getEvalStatus().Diag || !getEvalStatus().Diag->empty()) {
-    setActiveDiagnostic(false);
-    return OptionalDiagnostic();
-  }
-  return diag(Loc, DiagId, ExtraNotes, true);
+  return diag(Loc, DiagId, ExtraNotes, InterpDiagKind::CCE);
 }
 
 OptionalDiagnostic State::CCEDiag(const Expr *E, diag::kind DiagId,
@@ -57,6 +46,22 @@ OptionalDiagnostic State::CCEDiag(const Expr *E, diag::kind DiagId,
 OptionalDiagnostic State::CCEDiag(const SourceInfo &SI, diag::kind DiagId,
                                   unsigned ExtraNotes) {
   return CCEDiag(SI.getLoc(), DiagId, ExtraNotes);
+}
+
+OptionalDiagnostic State::PCFDiag(SourceLocation Loc, diag::kind DiagId,
+                                  unsigned ExtraNotes) {
+    return diag(Loc, DiagId, ExtraNotes,
+		partialConstantEvaluation() ? InterpDiagKind::PCF : InterpDiagKind::CCE);
+}
+
+OptionalDiagnostic State::PCFDiag(const Expr *E, diag::kind DiagId,
+                                  unsigned ExtraNotes) {
+  return PCFDiag(E->getExprLoc(), DiagId, ExtraNotes);
+}
+
+OptionalDiagnostic State::PCFDiag(const SourceInfo &SI, diag::kind DiagId,
+                                  unsigned ExtraNotes) {
+  return PCFDiag(SI.getLoc(), DiagId, ExtraNotes);
 }
 
 OptionalDiagnostic State::Note(SourceLocation Loc, diag::kind DiagId) {
@@ -84,32 +89,35 @@ PartialDiagnostic &State::addDiag(SourceLocation Loc, diag::kind DiagId) {
 }
 
 OptionalDiagnostic State::diag(SourceLocation Loc, diag::kind DiagId,
-                               unsigned ExtraNotes, bool IsCCEDiag) {
+                               unsigned ExtraNotes, InterpDiagKind InterpDiag) {
   Expr::EvalStatus &EvalStatus = getEvalStatus();
-  if (EvalStatus.Diag) {
-    if (hasPriorDiagnostic()) {
-      return OptionalDiagnostic();
-    }
-
-    unsigned CallStackNotes = getCallStackDepth() - 1;
-    unsigned Limit = getCtx().getDiagnostics().getConstexprBacktraceLimit();
-    if (Limit)
-      CallStackNotes = std::min(CallStackNotes, Limit + 1);
-    if (checkingPotentialConstantExpression())
-      CallStackNotes = 0;
-
-    setActiveDiagnostic(true);
-    setFoldFailureDiagnostic(!IsCCEDiag);
-    EvalStatus.Diag->clear();
-    EvalStatus.Diag->reserve(1 + ExtraNotes + CallStackNotes);
-    addDiag(Loc, DiagId);
-    if (!checkingPotentialConstantExpression()) {
-      addCallStack(Limit);
-    }
-    return OptionalDiagnostic(&(*EvalStatus.Diag)[0].second);
+  if (!EvalStatus.Diag) {
+    setActiveDiagnostic(false);
+    return OptionalDiagnostic();
   }
-  setActiveDiagnostic(false);
-  return OptionalDiagnostic();
+  
+  if (hasPriorDiagnostic()) {
+    return OptionalDiagnostic();
+  }
+
+  unsigned CallStackNotes = getCallStackDepth() - 1;
+  unsigned Limit = getCtx().getDiagnostics().getConstexprBacktraceLimit();
+  if (Limit)
+    CallStackNotes = std::min(CallStackNotes, Limit + 1);
+  if (checkingPotentialConstantExpression())
+    CallStackNotes = 0;
+
+  setActiveDiagnostic(true);
+  setFoldFailureDiagnostic(InterpDiag == InterpDiagKind::FF);
+  setCCEDiagnostic(InterpDiag == InterpDiagKind::CCE);
+  if (InterpDiag != InterpDiagKind::PCF)
+    EvalStatus.Diag->clear();
+  EvalStatus.Diag->reserve(1 + ExtraNotes + CallStackNotes);
+  addDiag(Loc, DiagId);
+  if (!checkingPotentialConstantExpression()) {
+    addCallStack(Limit);
+  }
+  return OptionalDiagnostic(&(*EvalStatus.Diag)[0].second);
 }
 
 const LangOptions &State::getLangOpts() const { return getCtx().getLangOpts(); }

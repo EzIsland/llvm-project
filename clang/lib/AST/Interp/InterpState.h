@@ -69,8 +69,14 @@ public:
   void setActiveDiagnostic(bool Flag) override {
     Parent.setActiveDiagnostic(Flag);
   }
+  bool partialConstantEvaluation() const override {
+    return Parent.partialConstantEvaluation();
+  }
   void setFoldFailureDiagnostic(bool Flag) override {
     Parent.setFoldFailureDiagnostic(Flag);
+  }
+  void setCCEDiagnostic(bool Flag) override {
+    Parent.setCCEDiagnostic(Flag);
   }
   bool hasPriorDiagnostic() override { return Parent.hasPriorDiagnostic(); }
 
