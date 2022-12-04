@@ -5179,7 +5179,7 @@ static EvalStmtResult EvaluateStmt(StmtResult &Result, EvalInfo &Info,
       // We know we returned, but we don't know what the value is.
       return ESR_Failed;
     }
-    if (RetExpr &&
+   if (RetExpr &&
         !(Result.Slot
               ? EvaluateInPlace(Result.Value, Info, *Result.Slot, RetExpr)
               : Evaluate(Result.Value, Info, RetExpr)))
@@ -15777,12 +15777,14 @@ bool Expr::isPotentialConstantExpr(const FunctionDecl *FD,
 				    Args, CallRef(), FD->getBody(), Info, Scratch, nullptr);
   }
 
-  if (!IsConstExpr || Scratch.isRuntime())
-    return false;
-
-  Diags.clear();
+  // When checking for potential constant expressions, IsConstExpr may be false
+  // even if there are no diagnostics. We use the diagnostics as the 'source of truth'.
+  if (Diags.empty() || (IsConstExpr && !Scratch.isRuntime())) {
+    Diags.clear();
+    return true;
+  }
   
-  return true;
+  return false;
 }
 
 bool Expr::isPotentialConstantExprUnevaluated(Expr *E,
@@ -15804,12 +15806,16 @@ bool Expr::isPotentialConstantExprUnevaluated(Expr *E,
   CallStackFrame Frame(Info, SourceLocation(), FD, /*This*/ nullptr, CallRef());
 
   APValue ResultScratch;
-  if (!Evaluate(ResultScratch, Info, E) || ResultScratch.isRuntime())
-    return false;
+  bool IsConstExpr = Evaluate(ResultScratch, Info, E);
 
-  Diags.clear();
+  // When checking for potential constant expressions, IsConstExpr may be false
+  // even if there are no diagnostics. We use the diagnostics as the 'source of truth'.
+  if (Diags.empty() || (IsConstExpr && !ResultScratch.isRuntime())) {
+    Diags.clear();
+    return true;
+  }
   
-  return true;
+  return false;
 }
 
 bool Expr::tryEvaluateObjectSize(uint64_t &Result, ASTContext &Ctx,
